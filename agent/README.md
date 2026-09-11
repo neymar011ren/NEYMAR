@@ -32,7 +32,7 @@
 - 可视化配置页：判断器自身上游的 Base URL / Key / 模型 / 协议 / 工具 / **联网搜索** / Mem0
 - 判断器专用工具 + 原有文件工具 / `protocol_adapt`
 - 联网搜索：`enable_web_search` 时在 Chat Completions 请求注入 `{"type":"web_search"}`
-- 长期记忆（可选）
+- 长期记忆（可选）：**本地 JSONL 优先**（不再因 Embed/Qdrant 锁导致失败）；Mem0 可用时自动叠加
 
 ## 快速开始
 
