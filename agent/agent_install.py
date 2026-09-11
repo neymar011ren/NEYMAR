@@ -155,15 +155,15 @@ INSTALL_RECIPES: dict[str, InstallRecipe] = {
         notes="WorkBuddy 主要为桌面客户端；请从官网下载安装。安装后通常会出现 ~/.workbuddy。",
         download_url="https://workbuddy.tencent.com",
     ),
-    "forge_agent": InstallRecipe(
-        agent_id="forge_agent",
+    "kingswitch": InstallRecipe(
+        agent_id="kingswitch",
         auto_installable=False,
-        package_name="Forge/Judger Agent",
+        package_name="KingSwitch",
         docs_url="local",
         search_query="",
         commands={"linux": (), "macos": (), "windows": ()},
         check_paths=(),
-        notes="本判断器已在运行，无需安装。",
+        notes="KingSwitch 已在运行，无需安装。",
     ),
 }
 

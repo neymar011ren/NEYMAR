@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from judger_prompt import JUDGER_SYSTEM_PROMPT
+from judger_prompt import KINGSWITCH_SYSTEM_PROMPT
 from pydantic import BaseModel, Field, field_validator
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -23,7 +23,7 @@ class AgentConfig(BaseModel):
     protocol: str = Field(default="chat_completions", description="接口协议")
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int = Field(default=4096, ge=1, le=200000)
-    system_prompt: str = Field(default=JUDGER_SYSTEM_PROMPT)
+    system_prompt: str = Field(default=KINGSWITCH_SYSTEM_PROMPT)
     enable_tools: bool = True
     enable_web_search: bool = False
     request_timeout_seconds: int = Field(default=120, ge=10, le=600)

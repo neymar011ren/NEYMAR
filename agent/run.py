@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch Forge Agent locally."""
+"""Launch KingSwitch locally."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import uvicorn
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Forge Agent")
+    parser = argparse.ArgumentParser(description="KingSwitch")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument("--reload", action="store_true")

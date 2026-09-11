@@ -207,7 +207,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_known_agents",
-            "description": "列出判断器支持自动探测/写入的目标 Agent 档案（名称、别名、原生协议、配置路径）。",
+            "description": "列出 KingSwitch 支持自动探测/写入的目标 Agent 档案（名称、别名、原生协议、配置路径）。",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -238,7 +238,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "properties": {
                     "agent_id": {
                         "type": "string",
-                        "description": "如 claude_code / workbuddy / continue / codex / cline / aider / opencode / forge_agent",
+                        "description": "如 claude_code / workbuddy / continue / codex / cline / aider / opencode / kingswitch",
                     }
                 },
                 "required": ["agent_id"],
@@ -263,7 +263,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "protocol": {
                         "type": "string",
                         "enum": ["chat_completions", "responses", "anthropic_messages"],
-                        "description": "仅 forge_agent 可用来设置协议；其他 Agent 可忽略",
+                        "description": "仅 kingswitch 可用来设置协议；其他 Agent 可忽略",
                     },
                     "create_if_missing": {
                         "type": "boolean",

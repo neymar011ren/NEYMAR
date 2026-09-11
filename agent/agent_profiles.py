@@ -98,12 +98,21 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         format="json",
         docs_hint="https://opencode.ai",
     ),
-    "forge_agent": AgentProfile(
-        id="forge_agent",
-        name="Forge Agent（本判断器上游）",
-        aliases=("forge", "forge agent", "本机 agent", "判断器", "当前 agent"),
+    "kingswitch": AgentProfile(
+        id="kingswitch",
+        name="KingSwitch（本助手上游）",
+        aliases=(
+            "kingswitch",
+            "king switch",
+            "forge",
+            "forge agent",
+            "judger",
+            "本机 agent",
+            "判断器",
+            "当前 agent",
+        ),
         native_protocol="chat_completions",
-        protocol_notes="本仓库 Forge Agent，支持三种协议，配置在 agent/data/config.json。",
+        protocol_notes="本仓库 KingSwitch，支持三种协议，配置在 agent/data/config.json。",
         config_paths=(),  # resolved dynamically
         format="json",
         docs_hint="本地 /workspace/agent/data/config.json",
@@ -119,7 +128,7 @@ def list_profiles_public() -> list[dict[str, Any]]:
     rows = []
     for profile in AGENT_PROFILES.values():
         paths = list(profile.config_paths)
-        if profile.id == "forge_agent":
+        if profile.id == "kingswitch":
             paths = [str(forge_config_path())]
         rows.append(
             {
@@ -139,6 +148,8 @@ def list_profiles_public() -> list[dict[str, Any]]:
 
 def resolve_profile(agent_id: str) -> AgentProfile | None:
     key = (agent_id or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if key in {"forge_agent", "forge", "judger", "judger_agent"}:
+        key = "kingswitch"
     if key in AGENT_PROFILES:
         return AGENT_PROFILES[key]
     # soft alias
@@ -189,7 +200,7 @@ def detect_from_text(text: str) -> list[dict[str, Any]]:
             "protocol_notes": p.protocol_notes,
             "config_paths": (
                 [str(forge_config_path())]
-                if p.id == "forge_agent"
+                if p.id == "kingswitch"
                 else list(p.config_paths)
             ),
         }
@@ -198,6 +209,6 @@ def detect_from_text(text: str) -> list[dict[str, Any]]:
 
 
 def profile_paths(profile: AgentProfile) -> list[Path]:
-    if profile.id == "forge_agent":
+    if profile.id == "kingswitch":
         return [forge_config_path()]
     return [_expand(p) for p in profile.config_paths]

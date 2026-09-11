@@ -17,7 +17,7 @@ from memory_service import clear_memories, invalidate_memory_client, list_memori
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
 
-app = FastAPI(title="Configurable Local Agent", version="0.1.0")
+app = FastAPI(title="KingSwitch", version="0.2.0")
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 

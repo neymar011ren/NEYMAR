@@ -1,10 +1,10 @@
-# Judger Agent（配置判断器）
+# KingSwitch
 
-把「对话 Agent」收敛为**判断器**：根据用户一句话，判断要把模型 API 配到哪个目标 Agent，并完成协议调研 → 协议转换 → 本地配置探测 → 索取凭证 → 写入渠道 → 测试验证。
+**KingSwitch** 是模型渠道切换助手：根据用户一句话，判断要把模型 API 配到哪个目标 Agent，并完成安装（如需要）→ 协议调研 → 协议转换 → 本地配置探测 → 索取凭证 → 写入渠道 → 测试验证。
 
 底层仍直接调用你提供的模型 API；联网搜索、协议转换等能力保留。
 
-## 判断器流水线
+## 流水线
 
 1. **意图识别** `detect_target_agent` / `list_known_agents`
 2. **协议调研**（档案内 `native_protocol` + 可选联网搜索）
@@ -26,12 +26,12 @@
 | `workbuddy` | WorkBuddy | chat_completions | `~/.workbuddy/models.json` |
 | `aider` | Aider | chat_completions | `~/.aider.conf.yml` |
 | `opencode` | OpenCode | chat_completions | `~/.config/opencode/opencode.json` |
-| `forge_agent` | 本判断器上游 | chat_completions | `agent/data/config.json` |
+| `kingswitch` | KingSwitch（本助手上游） | chat_completions | `agent/data/config.json` |
 
 ## 功能
 
-- 可视化配置页：判断器自身上游的 Base URL / Key / 模型 / 协议 / 工具 / **联网搜索** / Mem0
-- 判断器专用工具 + 原有文件工具 / `protocol_adapt`
+- 可视化配置页：KingSwitch 自身上游的 Base URL / Key / 模型 / 协议 / 工具 / **联网搜索** / Mem0
+- KingSwitch 专用工具 + 原有文件工具 / `protocol_adapt`
 - 联网搜索：`enable_web_search` 时在 Chat Completions 请求注入 `{"type":"web_search"}`
 - 长期记忆（可选）：**本地 JSONL 优先**（不再因 Embed/Qdrant 锁导致失败）；Mem0 可用时自动叠加
 
@@ -45,7 +45,7 @@ python run.py
 
 浏览器打开：<http://127.0.0.1:8787>
 
-1. 在「模型配置」里填好**判断器自己的**上游 API（用于推理）
+1. 在「模型配置」里填好 **KingSwitch 自己的**上游 API（用于推理）
 2. 建议开启「启用本地工具」与「启用联网搜索」
 3. 对话示例：`我想把金山云模型配到 Claude Code`
 
@@ -53,13 +53,13 @@ python run.py
 
 | 字段 | 说明 |
 |---|---|
-| `api_base_url` | 判断器上游 Base URL（通常到 `/v1`） |
-| `api_key` | 判断器上游密钥；界面留空表示保持原值 |
-| `model` | 判断器上游模型 ID |
+| `api_base_url` | KingSwitch 上游 Base URL（通常到 `/v1`） |
+| `api_key` | KingSwitch 上游密钥；界面留空表示保持原值 |
+| `model` | KingSwitch 上游模型 ID |
 | `protocol` | `chat_completions` / `responses` / `anthropic_messages` |
-| `enable_tools` | 启用判断器工具集 |
+| `enable_tools` | 启用 KingSwitch 工具集 |
 | `enable_web_search` | 启用联网搜索（见[金山云文档](https://docs.ksyun.com/documents/45179)） |
-| `system_prompt` | 默认已切换为判断器流水线提示词 |
+| `system_prompt` | 默认已切换为 KingSwitch 流水线提示词 |
 
 ## 单向协议适配器
 
@@ -83,9 +83,10 @@ python run.py
 agent/
   main.py               # FastAPI 入口
   llm.py                # 多协议调用 + Agent 循环
-  judger_prompt.py      # 判断器系统提示
+  judger_prompt.py      # KingSwitch 系统提示
   agent_profiles.py     # 目标 Agent 档案
   agent_config_tools.py # 探测 / 写入 / 测试
+  agent_install.py      # 安装检测与一键安装
   protocol_adapter.py   # 单向协议适配
   memory_service.py
   config_store.py

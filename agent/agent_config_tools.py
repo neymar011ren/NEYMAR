@@ -1,4 +1,4 @@
-"""判断器：探测 / 写入 / 测试第三方 Agent 的模型渠道配置。"""
+"""KingSwitch：探测 / 写入 / 测试第三方 Agent 的模型渠道配置。"""
 
 from __future__ import annotations
 
@@ -234,7 +234,7 @@ def _write_codex_toml(path: Path, base_url: str, model: str, api_key: str) -> di
         f"\nmodel = \"{model or 'custom'}\"\n"
         f"model_provider = \"{provider}\"\n\n"
         f"[model_providers.{provider}]\n"
-        f"name = \"Forge Custom\"\n"
+        f"name = \"KingSwitch Custom\"\n"
         f"base_url = \"{base_url.rstrip('/')}\"\n"
         f"wire_api = \"chat\"\n"
         f"# api_key 建议写入环境变量 OPENAI_API_KEY 或 auth.json；此处写入便于本地联调\n"
@@ -339,7 +339,7 @@ def write_agent_channel_config(
         return _json({"ok": False, "error": f"{profile.name} 暂不支持自动写入"})
 
     try:
-        if profile.id == "forge_agent":
+        if profile.id == "kingswitch":
             result = _write_forge(base_url, model, api_key, protocol)
             return _json({"ok": True, "agent_id": profile.id, "written": result})
 

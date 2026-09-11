@@ -69,9 +69,9 @@ function createTurnCard() {
   const row = document.createElement("article");
   row.className = "msg msg-assistant";
   row.innerHTML = `
-    <div class="avatar avatar-bot" aria-hidden="true">J</div>
+            <div class="avatar avatar-bot" aria-hidden="true">K</div>
     <div class="msg-col">
-      <div class="msg-role">Judger</div>
+      <div class="msg-role">KingSwitch</div>
       <div class="activity-rail"></div>
       <div class="msg-prose" hidden></div>
       <div class="citation-row" hidden></div>
@@ -610,7 +610,7 @@ els.chatInput.addEventListener("keydown", (event) => {
 els.chatInput.addEventListener("input", autoGrow);
 autoGrow();
 
-addNotice("欢迎使用 Judger Agent。先配置上游模型，再输入例如：我想把金山云模型配置到 WorkBuddy");
+addNotice("欢迎使用 KingSwitch。先配置上游模型，再输入例如：我想把金山云模型配置到 WorkBuddy");
 loadConfig().catch((err) => {
   addNotice(err.message || String(err), "error");
 });
