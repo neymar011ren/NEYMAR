@@ -138,6 +138,101 @@ function appendMemory(turn, message) {
   scrollChat();
 }
 
+function appendInstallOffer(turn, offer) {
+  const card = document.createElement("div");
+  card.className = "install-card";
+  const osLabel = offer.os?.os_key || offer.os?.system || "当前系统";
+  const cmds = (offer.commands || []).map((c) => `<code>${escapeHtml(c)}</code>`).join("<br/>");
+  card.innerHTML = `
+    <div class="install-head">
+      <div>
+        <div class="install-kicker">Install · ${escapeHtml(osLabel)}</div>
+        <div class="install-title">${escapeHtml(offer.name || offer.agent_id || "Agent")}</div>
+        <div class="install-desc">${escapeHtml(offer.notes || "")}</div>
+      </div>
+      <button type="button" class="primary-btn install-btn">${escapeHtml(offer.button_label || "安装")}</button>
+    </div>
+    <div class="install-meta">
+      <span>包：${escapeHtml(offer.package_name || "—")}</span>
+      ${offer.docs_url ? `<a href="${escapeHtml(offer.docs_url)}" target="_blank" rel="noreferrer">文档</a>` : ""}
+      ${offer.download_url ? `<a href="${escapeHtml(offer.download_url)}" target="_blank" rel="noreferrer">下载</a>` : ""}
+    </div>
+    ${cmds ? `<div class="install-cmds">${cmds}</div>` : ""}
+    ${offer.search_notes ? `<div class="install-search">${escapeHtml(offer.search_notes)}</div>` : ""}
+    ${offer.manual_hint ? `<div class="install-manual">${escapeHtml(offer.manual_hint)}</div>` : ""}
+    <pre class="install-log" hidden></pre>
+  `;
+  const btn = card.querySelector(".install-btn");
+  const log = card.querySelector(".install-log");
+  if (!offer.auto_installable) {
+    btn.textContent = offer.download_url ? "打开下载页" : "查看文档";
+    btn.addEventListener("click", () => {
+      const url = offer.download_url || offer.docs_url;
+      if (url) window.open(url, "_blank", "noreferrer");
+    });
+  } else {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "安装中…";
+      log.hidden = false;
+      log.textContent = "";
+      try {
+        const res = await fetch("/api/agents/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agent_id: offer.agent_id }),
+        });
+        if (!res.ok || !res.body) throw new Error(`安装请求失败 HTTP ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let ok = false;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith("data:")) continue;
+            const payload = JSON.parse(line.slice(5).trim());
+            if (payload.type === "log" || payload.type === "status" || payload.type === "command") {
+              const text =
+                payload.line ||
+                payload.message ||
+                (payload.command ? `$ ${payload.command}` : "");
+              if (text) log.textContent += `${text}\n`;
+            } else if (payload.type === "error") {
+              log.textContent += `错误：${payload.message || ""}\n`;
+              btn.textContent = "重试安装";
+              btn.disabled = false;
+            } else if (payload.type === "done") {
+              ok = !!payload.ok;
+              log.textContent += `${payload.message || "完成"}\n`;
+              btn.textContent = ok ? "已安装" : "重试安装";
+              btn.disabled = ok;
+              if (ok) card.classList.add("is-done");
+            }
+          }
+          scrollChat();
+        }
+        if (!ok && btn.disabled) {
+          btn.disabled = false;
+          btn.textContent = "重试安装";
+        }
+      } catch (err) {
+        log.textContent += `${err.message || err}\n`;
+        btn.disabled = false;
+        btn.textContent = "重试安装";
+      }
+      scrollChat();
+    });
+  }
+  turn.rail.appendChild(card);
+  scrollChat();
+}
+
 function appendTool(turn, kind, name, body) {
   let entry = turn.toolMap.get(name);
   if (!entry || kind === "call") {
@@ -425,6 +520,8 @@ async function sendMessage(event) {
           appendTool(turn, "call", payload.name, payload.arguments || "");
         } else if (payload.type === "tool_result") {
           appendTool(turn, "result", payload.name, payload.result || "");
+        } else if (payload.type === "install_offer") {
+          appendInstallOffer(turn, payload);
         } else if (payload.type === "memory") {
           if (payload.action === "recall" && payload.items?.length) {
             const lines = payload.items.map((item, i) => `${i + 1}. ${item.memory}`).join("\n");

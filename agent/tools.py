@@ -12,6 +12,7 @@ from agent_config_tools import (
     test_agent_channel,
     write_agent_channel_config,
 )
+from agent_install import tool_check_agent_installed, tool_prepare_agent_install
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_TOOL_NAMES = {
@@ -24,6 +25,8 @@ LOCAL_TOOL_NAMES = {
     "probe_agent_config",
     "write_agent_channel_config",
     "test_agent_channel",
+    "check_agent_installed",
+    "prepare_agent_install",
 }
 AGENT_DIR = Path(__file__).resolve().parent
 SENSITIVE_DIRS = (
@@ -297,6 +300,47 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_agent_installed",
+            "description": (
+                "检测本地是否已安装目标 Agent（可执行文件 / 配置目录）。"
+                "应在 probe_agent_config 之前调用；若未安装则继续 prepare_agent_install。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {
+                        "type": "string",
+                        "description": "如 claude_code / workbuddy / aider / codex 等",
+                    }
+                },
+                "required": ["agent_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "prepare_agent_install",
+            "description": (
+                "在确认本地未安装后调用：按当前操作系统生成安装方案，并让前端弹出「安装」按钮。"
+                "调用前应先联网搜索该 Agent 在本 OS 上的官方安装方式，把摘要写入 search_notes。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "search_notes": {
+                        "type": "string",
+                        "description": "联网搜索到的安装要点摘要（官网、包名、系统差异）",
+                    },
+                },
+                "required": ["agent_id"],
+            },
+        },
+    },
 ]
 
 
@@ -326,6 +370,10 @@ HANDLERS: dict[str, Callable[..., str]] = {
         model,
         api_key,
         source_protocol=source_protocol,
+    ),
+    "check_agent_installed": lambda agent_id: tool_check_agent_installed(agent_id),
+    "prepare_agent_install": lambda agent_id, search_notes="": tool_prepare_agent_install(
+        agent_id, search_notes=search_notes
     ),
 }
 

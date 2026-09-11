@@ -399,6 +399,81 @@ body {
 }
 .citation-chip:hover { background: rgba(255,255,255,0.06); }
 
+.install-card {
+  border: 1px solid rgba(184, 224, 58, 0.28);
+  background: linear-gradient(180deg, rgba(184, 224, 58, 0.08), rgba(255,255,255,0.02));
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+}
+.install-card.is-done {
+  border-color: rgba(125, 222, 168, 0.35);
+}
+.install-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.install-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.install-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+.install-desc {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+  line-height: 1.45;
+}
+.install-btn { white-space: nowrap; }
+.install-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.install-meta a { color: #9fd0ff; text-decoration: none; }
+.install-cmds {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #d7e4dc;
+}
+.install-cmds code {
+  font-family: var(--font-mono);
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+.install-search, .install-manual {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.install-log {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 10px;
+  background: #0d1210;
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #cfd8d2;
+  white-space: pre-wrap;
+}
+
 /* Composer — ChatGPT style */
 .composer {
   border-top: 1px solid var(--line);

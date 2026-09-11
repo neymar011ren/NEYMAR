@@ -8,11 +8,12 @@
 
 1. **意图识别** `detect_target_agent` / `list_known_agents`
 2. **协议调研**（档案内 `native_protocol` + 可选联网搜索）
-3. **协议转换** `protocol_adapt`（Responses / Anthropic → Chat Completions）
-4. **本地探测** `probe_agent_config`
-5. **向用户索取** Base URL、模型名、API Key（密钥由用户自行输入）
-6. **写入配置** `write_agent_channel_config`（写入前 backup）
-7. **测试验证** `test_agent_channel`（含协议转换步骤 + HTTP 探测）
+3. **安装检测** `check_agent_installed` → 未安装则联网搜索并 `prepare_agent_install`（前端弹出安装按钮）
+4. **协议转换** `protocol_adapt`（Responses / Anthropic → Chat Completions）
+5. **本地探测** `probe_agent_config`
+6. **向用户索取** Base URL、模型名、API Key（密钥由用户自行输入）
+7. **写入配置** `write_agent_channel_config`（写入前 backup）
+8. **测试验证** `test_agent_channel`（含协议转换步骤 + HTTP 探测）
 
 ## 支持的目标 Agent
 

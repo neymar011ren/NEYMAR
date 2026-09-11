@@ -558,6 +558,27 @@ async def run_agent(
                     "name": name,
                     "result": result[:4000],
                 }
+                if name == "prepare_agent_install":
+                    try:
+                        offer = json.loads(result)
+                    except json.JSONDecodeError:
+                        offer = None
+                    if isinstance(offer, dict) and offer.get("offer_install"):
+                        yield {
+                            "type": "install_offer",
+                            "agent_id": offer.get("agent_id"),
+                            "name": offer.get("name"),
+                            "button_label": offer.get("button_label") or f"安装 {offer.get('name')}",
+                            "os": offer.get("os"),
+                            "package_name": offer.get("package_name"),
+                            "auto_installable": bool(offer.get("auto_installable")),
+                            "commands": offer.get("commands") or [],
+                            "docs_url": offer.get("docs_url") or "",
+                            "download_url": offer.get("download_url") or "",
+                            "notes": offer.get("notes") or "",
+                            "search_notes": offer.get("search_notes") or "",
+                            "manual_hint": offer.get("manual_hint"),
+                        }
                 messages.append(
                     {
                         "role": "tool",

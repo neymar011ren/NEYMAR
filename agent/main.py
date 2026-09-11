@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from agent_install import check_agent_installed, prepare_agent_install, run_agent_install
 from config_store import AgentConfig, load_config, public_config, save_config
 from llm import LLMError, probe_connection, run_agent
 from memory_service import clear_memories, invalidate_memory_client, list_memories
@@ -46,6 +47,10 @@ class ChatRequest(BaseModel):
     history: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class InstallRequest(BaseModel):
+    agent_id: str = Field(min_length=1)
+
+
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -54,6 +59,30 @@ async def index() -> FileResponse:
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/agents/{agent_id}/install-info")
+async def agent_install_info(agent_id: str) -> dict[str, Any]:
+    status = check_agent_installed(agent_id)
+    if not status.get("ok"):
+        raise HTTPException(status_code=404, detail=status.get("error") or "unknown agent")
+    offer = prepare_agent_install(agent_id)
+    return {"status": status, "offer": offer}
+
+
+@app.post("/api/agents/install")
+async def install_agent(req: InstallRequest) -> StreamingResponse:
+    agent_id = req.agent_id.strip()
+
+    async def event_stream():
+        try:
+            for event in run_agent_install(agent_id):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as exc:  # noqa: BLE001
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+        yield "data: {\"type\": \"finished\"}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.get("/api/config")
