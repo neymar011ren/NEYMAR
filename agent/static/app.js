@@ -32,9 +32,17 @@ function scrollChat() {
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
 }
 
+function prettyJson(body) {
+  try {
+    return JSON.stringify(JSON.parse(body), null, 2);
+  } catch {
+    return body || "";
+  }
+}
+
 function addNotice(text, kind = "") {
   const div = document.createElement("div");
-  div.className = `notice ${kind}`.trim();
+  div.className = `sys-banner ${kind}`.trim();
   div.textContent = text;
   els.chatLog.appendChild(div);
   scrollChat();
@@ -42,157 +50,200 @@ function addNotice(text, kind = "") {
 }
 
 function addUserBubble(text) {
-  const div = document.createElement("div");
-  div.className = "bubble-user";
-  div.textContent = text;
-  els.chatLog.appendChild(div);
+  const row = document.createElement("article");
+  row.className = "msg msg-user";
+  row.innerHTML = `
+    <div class="msg-col">
+      <div class="msg-role">你</div>
+      <div class="user-bubble"></div>
+    </div>
+    <div class="avatar avatar-user" aria-hidden="true">你</div>
+  `;
+  row.querySelector(".user-bubble").textContent = text;
+  els.chatLog.appendChild(row);
   scrollChat();
-  return div;
+  return row;
 }
 
 function createTurnCard() {
-  const turn = document.createElement("article");
-  turn.className = "turn";
-  turn.innerHTML = `
-    <section class="turn-section sec-think hidden">
-      <div class="section-head">
-        <span class="section-label think">思考过程</span>
-      </div>
-      <div class="think-log"></div>
-    </section>
-    <section class="turn-section sec-tools hidden">
-      <div class="section-head">
-        <span class="section-label tools">工具调用</span>
-        <button type="button" class="section-toggle" data-collapse="tools">收起</button>
-      </div>
-      <div class="tool-log"></div>
-    </section>
-    <section class="turn-section sec-memory hidden">
-      <div class="section-head">
-        <span class="section-label memory">记忆</span>
-      </div>
-      <div class="memory-log"></div>
-    </section>
-    <section class="turn-section sec-answer hidden">
-      <div class="section-head">
-        <span class="section-label answer">回复正文</span>
-      </div>
-      <div class="answer-body"></div>
-    </section>
-    <section class="turn-section sec-refs hidden">
-      <div class="section-head">
-        <span class="section-label refs">参考资料</span>
-      </div>
-      <ol class="ref-list"></ol>
-    </section>
+  const row = document.createElement("article");
+  row.className = "msg msg-assistant";
+  row.innerHTML = `
+    <div class="avatar avatar-bot" aria-hidden="true">J</div>
+    <div class="msg-col">
+      <div class="msg-role">Judger</div>
+      <div class="activity-rail"></div>
+      <div class="msg-prose" hidden></div>
+      <div class="citation-row" hidden></div>
+    </div>
   `;
   const api = {
-    root: turn,
-    think: turn.querySelector(".think-log"),
-    tools: turn.querySelector(".tool-log"),
-    memory: turn.querySelector(".memory-log"),
-    answer: turn.querySelector(".answer-body"),
-    refs: turn.querySelector(".ref-list"),
-    secThink: turn.querySelector(".sec-think"),
-    secTools: turn.querySelector(".sec-tools"),
-    secMemory: turn.querySelector(".sec-memory"),
-    secAnswer: turn.querySelector(".sec-answer"),
-    secRefs: turn.querySelector(".sec-refs"),
+    root: row,
+    rail: row.querySelector(".activity-rail"),
+    prose: row.querySelector(".msg-prose"),
+    citations: row.querySelector(".citation-row"),
+    thinkDetails: null,
+    thinkBody: null,
+    streamText: "",
+    toolMap: new Map(),
   };
-  turn.querySelector("[data-collapse=tools]")?.addEventListener("click", (ev) => {
-    const btn = ev.currentTarget;
-    const collapsed = api.tools.classList.toggle("hidden");
-    btn.textContent = collapsed ? "展开" : "收起";
-  });
-  els.chatLog.appendChild(turn);
+  els.chatLog.appendChild(row);
   scrollChat();
   return api;
 }
 
-function showSection(section) {
-  section.classList.remove("hidden");
+function ensureThink(turn) {
+  if (turn.thinkDetails) return;
+  const details = document.createElement("details");
+  details.className = "rail-card think-card";
+  details.open = true;
+  details.innerHTML = `
+    <summary>
+      <span class="rail-ico" aria-hidden="true">◎</span>
+      <span class="rail-title">Working</span>
+      <span class="rail-sub think-sub">处理中</span>
+      <span class="chev" aria-hidden="true"></span>
+    </summary>
+    <div class="rail-body think-body"></div>
+  `;
+  turn.rail.appendChild(details);
+  turn.thinkDetails = details;
+  turn.thinkBody = details.querySelector(".think-body");
 }
 
 function appendThink(turn, message) {
-  showSection(turn.secThink);
+  ensureThink(turn);
   const item = document.createElement("div");
-  item.className = "think-item";
+  item.className = "think-line";
   item.textContent = message;
-  turn.think.appendChild(item);
+  turn.thinkBody.appendChild(item);
+  const sub = turn.thinkDetails.querySelector(".think-sub");
+  if (sub) sub.textContent = message;
   scrollChat();
 }
 
 function appendMemory(turn, message) {
-  showSection(turn.secMemory);
-  const item = document.createElement("div");
-  item.className = "memory-item";
-  item.textContent = message;
-  turn.memory.appendChild(item);
+  const details = document.createElement("details");
+  details.className = "rail-card memory-card";
+  details.innerHTML = `
+    <summary>
+      <span class="rail-ico" aria-hidden="true">◉</span>
+      <span class="rail-title">Memory</span>
+      <span class="rail-sub">长期记忆</span>
+      <span class="chev" aria-hidden="true"></span>
+    </summary>
+    <div class="rail-body"><pre>${escapeHtml(message)}</pre></div>
+  `;
+  turn.rail.appendChild(details);
   scrollChat();
 }
 
 function appendTool(turn, kind, name, body) {
-  showSection(turn.secTools);
-  const item = document.createElement("div");
-  item.className = `tool-item ${kind === "result" ? "result" : ""}`.trim();
-  const title = document.createElement("div");
-  title.className = "tool-name";
-  title.textContent = kind === "call" ? `调用 · ${name}` : `结果 · ${name}`;
-  const pre = document.createElement("pre");
-  try {
-    const parsed = JSON.parse(body);
-    pre.textContent = JSON.stringify(parsed, null, 2);
-  } catch {
-    pre.textContent = body || "";
+  let entry = turn.toolMap.get(name);
+  if (!entry || kind === "call") {
+    const details = document.createElement("details");
+    details.className = "rail-card tool-card";
+    details.innerHTML = `
+      <summary>
+        <span class="rail-ico" aria-hidden="true">⇢</span>
+        <span class="rail-title">Used ${escapeHtml(name)}</span>
+        <span class="rail-sub tool-state">running</span>
+        <span class="chev" aria-hidden="true"></span>
+      </summary>
+      <div class="rail-body">
+        <div class="tool-pane">
+          <div class="pane-label">Request</div>
+          <pre class="tool-req"></pre>
+        </div>
+        <div class="tool-pane tool-res-pane" hidden>
+          <div class="pane-label">Response</div>
+          <pre class="tool-res"></pre>
+        </div>
+      </div>
+    `;
+    turn.rail.appendChild(details);
+    entry = {
+      details,
+      req: details.querySelector(".tool-req"),
+      res: details.querySelector(".tool-res"),
+      resPane: details.querySelector(".tool-res-pane"),
+      state: details.querySelector(".tool-state"),
+    };
+    turn.toolMap.set(name, entry);
   }
-  item.appendChild(title);
-  item.appendChild(pre);
-  turn.tools.appendChild(item);
+  if (kind === "call") {
+    entry.req.textContent = prettyJson(body);
+    entry.state.textContent = "running";
+    entry.state.classList.add("is-run");
+  } else {
+    entry.res.textContent = prettyJson(body);
+    entry.resPane.hidden = false;
+    entry.state.textContent = "done";
+    entry.state.classList.remove("is-run");
+    entry.state.classList.add("is-done");
+  }
+  // 思考卡在工具开始后自动收起，更像 ChatGPT
+  if (turn.thinkDetails) turn.thinkDetails.open = false;
   scrollChat();
 }
 
 function appendDelta(turn, piece) {
-  showSection(turn.secAnswer);
-  turn.answer.classList.add("streaming");
-  turn.answer.textContent += piece;
+  turn.prose.hidden = false;
+  turn.streamText += piece;
+  turn.prose.classList.add("streaming");
+  // 流式阶段用纯文本，避免半截 markdown 闪烁
+  turn.prose.textContent = turn.streamText;
   scrollChat();
 }
 
 function finalizeAnswer(turn, content, references) {
-  showSection(turn.secAnswer);
-  turn.answer.classList.remove("streaming");
-  turn.answer.textContent = content || "(空回复)";
+  turn.prose.hidden = false;
+  turn.prose.classList.remove("streaming");
+  const text = content || "(空回复)";
+  turn.streamText = text;
+  turn.prose.innerHTML = renderMarkdown(text);
+  if (turn.thinkDetails) {
+    turn.thinkDetails.open = false;
+    const sub = turn.thinkDetails.querySelector(".think-sub");
+    if (sub) sub.textContent = "已完成";
+  }
   if (Array.isArray(references) && references.length) {
-    showSection(turn.secRefs);
-    turn.refs.innerHTML = "";
-    for (const ref of references) {
-      const li = document.createElement("li");
+    turn.citations.hidden = false;
+    turn.citations.innerHTML = "";
+    const label = document.createElement("div");
+    label.className = "citation-label";
+    label.textContent = "Sources";
+    turn.citations.appendChild(label);
+    const wrap = document.createElement("div");
+    wrap.className = "citation-chips";
+    references.forEach((ref, idx) => {
+      const chip = document.createElement(ref.url ? "a" : "span");
+      chip.className = "citation-chip";
+      chip.textContent = `${idx + 1}. ${ref.title || ref.url || "来源"}`;
       if (ref.url) {
-        const a = document.createElement("a");
-        a.href = ref.url;
-        a.target = "_blank";
-        a.rel = "noreferrer";
-        a.textContent = ref.title || ref.url;
-        li.appendChild(a);
-      } else {
-        li.textContent = ref.title || "";
+        chip.href = ref.url;
+        chip.target = "_blank";
+        chip.rel = "noreferrer";
       }
-      turn.refs.appendChild(li);
-    }
+      wrap.appendChild(chip);
+    });
+    turn.citations.appendChild(wrap);
   }
   scrollChat();
 }
 
 function resetAnswerStream(turn) {
-  turn.answer.textContent = "";
-  turn.answer.classList.remove("streaming");
-  turn.secAnswer.classList.add("hidden");
+  turn.streamText = "";
+  turn.prose.textContent = "";
+  turn.prose.classList.remove("streaming");
+  turn.prose.hidden = true;
 }
 
 function setBusy(busy) {
   state.busy = busy;
   els.btnSend.disabled = busy;
   els.chatInput.disabled = busy;
+  els.btnSend.classList.toggle("is-busy", busy);
 }
 
 function openSettings() {
@@ -330,6 +381,7 @@ async function sendMessage(event) {
   addUserBubble(message);
   state.history.push({ role: "user", content: message });
   els.chatInput.value = "";
+  autoGrow();
   setBusy(true);
 
   const turn = createTurnCard();
@@ -398,6 +450,12 @@ async function sendMessage(event) {
   }
 }
 
+function autoGrow() {
+  const el = els.chatInput;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(180, Math.max(52, el.scrollHeight))}px`;
+}
+
 els.btnOpenSettings.addEventListener("click", openSettings);
 els.drawer.querySelectorAll("[data-close]").forEach((node) => {
   node.addEventListener("click", closeSettings);
@@ -452,6 +510,8 @@ els.chatInput.addEventListener("keydown", (event) => {
     els.chatForm.requestSubmit();
   }
 });
+els.chatInput.addEventListener("input", autoGrow);
+autoGrow();
 
 addNotice("欢迎使用 Judger Agent。先配置上游模型，再输入例如：我想把金山云模型配置到 WorkBuddy");
 loadConfig().catch((err) => {

@@ -34,14 +34,18 @@
     </header>
 
     <main class="chat-shell">
-      <p class="shell-lede">把模型 API 配进目标 Agent：识别意图 → 查协议 → 转换 → 写入 → 测试。工具 / 思考 / 正文 / 参考分区展示。</p>
       <section class="chat-panel">
         <div id="chat-log" class="chat-log" aria-live="polite"></div>
         <form id="chat-form" class="composer">
-          <textarea id="chat-input" rows="3" placeholder="例如：我想把金山云模型配置到 WorkBuddy"></textarea>
-          <div class="composer-actions">
+          <div class="composer-box">
+            <textarea id="chat-input" rows="1" placeholder="把模型配到哪个 Agent？例如：配置金山云到 WorkBuddy"></textarea>
+            <div class="composer-actions">
+              <button id="btn-send" class="primary-btn" type="submit">发送</button>
+            </div>
+          </div>
+          <div class="composer-foot">
             <button id="btn-clear" class="ghost-btn" type="button">清空对话</button>
-            <button id="btn-send" class="primary-btn" type="submit">发送</button>
+            <span>Enter 发送 · Shift+Enter 换行</span>
           </div>
         </form>
       </section>
@@ -160,6 +164,7 @@
     </div>
   </aside>
 
+  <script src="/assets/markdown.js"></script>
   <script src="/assets/app.js"></script>
 </body>
 </html>
