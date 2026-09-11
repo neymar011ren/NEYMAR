@@ -29,6 +29,7 @@ class ConfigUpdate(BaseModel):
     max_tokens: int | None = None
     system_prompt: str | None = None
     enable_tools: bool | None = None
+    enable_web_search: bool | None = None
     request_timeout_seconds: int | None = None
     enable_memory: bool | None = None
     memory_user_id: str | None = None

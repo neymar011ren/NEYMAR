@@ -40,6 +40,7 @@ python run.py
 | `model` | 上游模型 ID |
 | `protocol` | `chat_completions` / `responses` / `anthropic_messages` |
 | `enable_tools` | 是否允许 Agent 调用本地文件工具 |
+| `enable_web_search` | 是否启用联网搜索（请求 `tools` 注入 `{"type":"web_search"}`，见[金山云文档](https://docs.ksyun.com/documents/45179)） |
 | `enable_memory` | 是否启用 Mem0 长期记忆 |
 | `memory_user_id` | 记忆命名空间（多用户隔离） |
 | `memory_embed_base_url` | **向量模型独立 Base URL**（与文本模型分开） |

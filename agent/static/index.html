@@ -120,6 +120,12 @@
         </label>
 
         <label class="checkbox">
+          <input name="enable_web_search" type="checkbox" />
+          <span>启用联网搜索（tools.type = web_search）</span>
+        </label>
+        <small class="field-note">按金山云文档在请求中注入 web_search；需上游 Chat Completions 支持。参考 docs.ksyun.com/documents/45179</small>
+
+        <label class="checkbox">
           <input name="enable_memory" type="checkbox" />
           <span>启用长期记忆（Mem0 + 本地 Qdrant）</span>
         </label>

@@ -226,11 +226,22 @@ async def call_model(config: AgentConfig, messages: list[dict[str, Any]]) -> dic
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
         }
+        tools: list[dict[str, Any]] = []
+        # 金山云等兼容接口：tools 中加入 {"type":"web_search"} 开启联网搜索
+        # 参考：https://docs.ksyun.com/documents/45179
+        if config.enable_web_search:
+            tools.append({"type": "web_search"})
         if config.enable_tools:
-            payload["tools"] = TOOL_DEFINITIONS
+            tools.extend(TOOL_DEFINITIONS)
+        if tools:
+            payload["tools"] = tools
             payload["tool_choice"] = "auto"
         data = await _post_json(config, _chat_url(config), payload)
-        return _extract_chat_message(data)
+        message = _extract_chat_message(data)
+        usage = data.get("usage") if isinstance(data, dict) else None
+        if isinstance(usage, dict) and "web_search_queries" in usage:
+            message["_web_search_queries"] = usage.get("web_search_queries")
+        return message
 
     if config.protocol == "responses":
         payload = {
@@ -239,16 +250,23 @@ async def call_model(config: AgentConfig, messages: list[dict[str, Any]]) -> dic
             "temperature": config.temperature,
             "max_output_tokens": config.max_tokens,
         }
+        tools = []
+        if config.enable_web_search:
+            tools.append({"type": "web_search"})
         if config.enable_tools:
-            payload["tools"] = [
-                {
-                    "type": "function",
-                    "name": item["function"]["name"],
-                    "description": item["function"].get("description", ""),
-                    "parameters": item["function"].get("parameters", {}),
-                }
-                for item in TOOL_DEFINITIONS
-            ]
+            tools.extend(
+                [
+                    {
+                        "type": "function",
+                        "name": item["function"]["name"],
+                        "description": item["function"].get("description", ""),
+                        "parameters": item["function"].get("parameters", {}),
+                    }
+                    for item in TOOL_DEFINITIONS
+                ]
+            )
+        if tools:
+            payload["tools"] = tools
         data = await _post_json(config, _responses_url(config), payload)
         return _extract_responses_message(data)
 
@@ -326,10 +344,23 @@ async def run_agent(
         assistant = await call_model(config, messages)
         tool_calls = assistant.get("tool_calls") or []
         content = assistant.get("content")
+        web_search_queries = assistant.pop("_web_search_queries", None)
+        if web_search_queries is not None:
+            yield {
+                "type": "status",
+                "message": f"联网搜索次数：{web_search_queries}",
+            }
 
-        if tool_calls and config.enable_tools:
+        # 仅执行本地 function 工具；web_search 由上游服务端完成
+        local_tool_calls = [
+            call
+            for call in tool_calls
+            if (call.get("function", {}) or {}).get("name") in {"list_files", "read_file", "write_file"}
+        ]
+
+        if local_tool_calls and config.enable_tools:
             messages.append(assistant)
-            for call in tool_calls:
+            for call in local_tool_calls:
                 name = call.get("function", {}).get("name") or ""
                 raw_args = call.get("function", {}).get("arguments") or "{}"
                 yield {
@@ -393,7 +424,13 @@ async def probe_connection(config: AgentConfig) -> dict[str, Any]:
         {"role": "user", "content": "ping"},
     ]
     # 探测时关闭工具，避免上游因 tools 字段失败
-    probe_config = config.model_copy(update={"enable_tools": False, "max_tokens": min(64, config.max_tokens)})
+    probe_config = config.model_copy(
+        update={
+            "enable_tools": False,
+            "enable_web_search": False,
+            "max_tokens": min(64, config.max_tokens),
+        }
+    )
     message = await call_model(probe_config, probe_messages)
     return {
         "ok": True,

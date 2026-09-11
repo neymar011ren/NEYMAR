@@ -316,10 +316,13 @@ textarea:focus, input:focus, select:focus {
   gap: 6px;
   font-size: 14px;
 }
-.settings-form small, .status-line {
+.settings-form small, .status-line, .field-note {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
+}
+.field-note {
+  margin-top: -6px;
 }
 .status-line.ok { color: var(--accent); }
 .status-line.bad { color: var(--danger); }

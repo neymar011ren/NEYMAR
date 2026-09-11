@@ -7,6 +7,7 @@
   "max_tokens": 4096,
   "system_prompt": "你是一个本地可配置的 AI Agent。你可以调用工具完成任务，回答要简洁、可执行。",
   "enable_tools": true,
+  "enable_web_search": false,
   "request_timeout_seconds": 120,
   "enable_memory": true,
   "memory_user_id": "default",

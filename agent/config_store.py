@@ -26,6 +26,7 @@ class AgentConfig(BaseModel):
         default="你是一个本地可配置的 AI Agent。你可以调用工具完成任务，回答要简洁、可执行。"
     )
     enable_tools: bool = True
+    enable_web_search: bool = False
     request_timeout_seconds: int = Field(default=120, ge=10, le=600)
     # Mem0 长期记忆（本地 Qdrant）
     enable_memory: bool = True

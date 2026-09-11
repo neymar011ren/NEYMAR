@@ -63,6 +63,7 @@ function fillSettingsForm(config) {
   form.max_tokens.value = config.max_tokens ?? 4096;
   form.request_timeout_seconds.value = config.request_timeout_seconds ?? 120;
   form.enable_tools.checked = !!config.enable_tools;
+  form.enable_web_search.checked = !!config.enable_web_search;
   form.enable_memory.checked = !!config.enable_memory;
   form.memory_user_id.value = config.memory_user_id || "default";
   form.memory_llm_model.value = config.memory_llm_model || "";
@@ -87,8 +88,9 @@ function refreshMeta(config) {
   els.metaModel.textContent = config.model || "—";
   els.metaProtocol.textContent = PROTOCOL_LABEL[config.protocol] || config.protocol || "—";
   const tools = config.enable_tools ? "工具开" : "工具关";
+  const web = config.enable_web_search ? "联网开" : "联网关";
   const mem = config.enable_memory ? "记忆开" : "记忆关";
-  els.metaTools.textContent = `${tools} / ${mem}`;
+  els.metaTools.textContent = `${tools} / ${web} / ${mem}`;
 }
 
 async function loadConfig() {
@@ -112,6 +114,7 @@ async function saveConfig(event) {
     max_tokens: Number(form.max_tokens.value),
     request_timeout_seconds: Number(form.request_timeout_seconds.value),
     enable_tools: form.enable_tools.checked,
+    enable_web_search: form.enable_web_search.checked,
     enable_memory: form.enable_memory.checked,
     memory_user_id: form.memory_user_id.value.trim() || "default",
     memory_llm_model: form.memory_llm_model.value.trim(),
