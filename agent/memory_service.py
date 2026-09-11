@@ -194,7 +194,7 @@ def get_memory_client(config: AgentConfig):
             "vector_store": {
                 "provider": "qdrant",
                 "config": {
-                    "collection_name": "forge_agent",
+                    "collection_name": "kingswitch",
                     "path": str(QDRANT_PATH),
                     "embedding_model_dims": config.memory_embed_dims,
                 },
