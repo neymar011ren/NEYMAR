@@ -119,6 +119,44 @@
           <span>启用本地工具（读/写/列目录）</span>
         </label>
 
+        <label class="checkbox">
+          <input name="enable_memory" type="checkbox" />
+          <span>启用长期记忆（Mem0 + 本地 Qdrant）</span>
+        </label>
+
+        <label>
+          <span>记忆用户 ID</span>
+          <input name="memory_user_id" placeholder="default" />
+          <small>不同 ID 隔离记忆；多用户/多人格可分开。</small>
+        </label>
+
+        <div class="grid-2">
+          <label>
+            <span>记忆抽取模型</span>
+            <input name="memory_llm_model" placeholder="空=复用主模型" />
+          </label>
+          <label>
+            <span>向量模型</span>
+            <input name="memory_embed_model" placeholder="text-embedding-3-small" />
+          </label>
+        </div>
+
+        <div class="grid-2">
+          <label>
+            <span>检索条数 Top-K</span>
+            <input name="memory_top_k" type="number" min="1" max="20" step="1" />
+          </label>
+          <label>
+            <span>向量维度</span>
+            <input name="memory_embed_dims" type="number" min="64" max="4096" step="1" />
+          </label>
+        </div>
+
+        <div class="drawer-actions memory-actions">
+          <button id="btn-list-memory" class="ghost-btn" type="button">查看记忆</button>
+          <button id="btn-clear-memory" class="ghost-btn" type="button">清空记忆</button>
+        </div>
+
         <label>
           <span>系统提示词</span>
           <textarea name="system_prompt" rows="5"></textarea>

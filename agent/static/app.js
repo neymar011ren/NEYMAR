@@ -63,6 +63,12 @@ function fillSettingsForm(config) {
   form.max_tokens.value = config.max_tokens ?? 4096;
   form.request_timeout_seconds.value = config.request_timeout_seconds ?? 120;
   form.enable_tools.checked = !!config.enable_tools;
+  form.enable_memory.checked = !!config.enable_memory;
+  form.memory_user_id.value = config.memory_user_id || "default";
+  form.memory_llm_model.value = config.memory_llm_model || "";
+  form.memory_embed_model.value = config.memory_embed_model || "text-embedding-3-small";
+  form.memory_top_k.value = config.memory_top_k ?? 5;
+  form.memory_embed_dims.value = config.memory_embed_dims ?? 1536;
   form.system_prompt.value = config.system_prompt || "";
   els.keyHint.textContent = config.api_key_set
     ? `当前已设置 Key：${config.api_key_masked}`
@@ -72,7 +78,9 @@ function fillSettingsForm(config) {
 function refreshMeta(config) {
   els.metaModel.textContent = config.model || "—";
   els.metaProtocol.textContent = PROTOCOL_LABEL[config.protocol] || config.protocol || "—";
-  els.metaTools.textContent = config.enable_tools ? "已启用" : "关闭";
+  const tools = config.enable_tools ? "工具开" : "工具关";
+  const mem = config.enable_memory ? "记忆开" : "记忆关";
+  els.metaTools.textContent = `${tools} / ${mem}`;
 }
 
 async function loadConfig() {
@@ -96,6 +104,12 @@ async function saveConfig(event) {
     max_tokens: Number(form.max_tokens.value),
     request_timeout_seconds: Number(form.request_timeout_seconds.value),
     enable_tools: form.enable_tools.checked,
+    enable_memory: form.enable_memory.checked,
+    memory_user_id: form.memory_user_id.value.trim() || "default",
+    memory_llm_model: form.memory_llm_model.value.trim(),
+    memory_embed_model: form.memory_embed_model.value.trim() || "text-embedding-3-small",
+    memory_top_k: Number(form.memory_top_k.value),
+    memory_embed_dims: Number(form.memory_embed_dims.value),
     system_prompt: form.system_prompt.value,
   };
 
@@ -192,6 +206,15 @@ async function sendMessage(event) {
           addBubble("tool", `调用工具 ${payload.name}\n${payload.arguments}`);
         } else if (payload.type === "tool_result") {
           addBubble("tool", `工具结果 ${payload.name}\n${payload.result}`);
+        } else if (payload.type === "memory") {
+          if (payload.action === "recall" && payload.items?.length) {
+            const lines = payload.items.map((item, i) => `${i + 1}. ${item.memory}`).join("\n");
+            addBubble("system", `召回 ${payload.count} 条记忆：\n${lines}`);
+          } else if (payload.action === "write") {
+            addBubble("system", "本轮对话已写入长期记忆");
+          } else if (payload.action === "recall_error" || payload.action === "write_error") {
+            addBubble("tool", payload.message || "记忆操作失败");
+          }
         } else if (payload.type === "final") {
           finalText = payload.content || "";
           statusBubble.remove();
@@ -218,6 +241,43 @@ els.drawer.querySelectorAll("[data-close]").forEach((node) => {
 els.settingsForm.addEventListener("submit", saveConfig);
 els.btnTest.addEventListener("click", testConnection);
 els.chatForm.addEventListener("submit", sendMessage);
+document.getElementById("btn-list-memory").addEventListener("click", async () => {
+  els.settingsStatus.textContent = "读取记忆中…";
+  els.settingsStatus.className = "status-line";
+  const res = await fetch("/api/memory?limit=20");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    els.settingsStatus.textContent = data.detail || "读取失败";
+    els.settingsStatus.className = "status-line bad";
+    return;
+  }
+  const items = data.items || [];
+  if (!items.length) {
+    addBubble("system", `用户 ${data.user_id} 暂无长期记忆`);
+  } else {
+    addBubble(
+      "system",
+      `用户 ${data.user_id} 的记忆（${items.length}）：\n` +
+        items.map((item, i) => `${i + 1}. ${item.memory}`).join("\n"),
+    );
+  }
+  els.settingsStatus.textContent = `已加载 ${items.length} 条记忆`;
+  els.settingsStatus.className = "status-line ok";
+  closeSettings();
+});
+document.getElementById("btn-clear-memory").addEventListener("click", async () => {
+  if (!window.confirm("确认清空当前记忆用户 ID 下的全部长期记忆？")) return;
+  const res = await fetch("/api/memory", { method: "DELETE" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    els.settingsStatus.textContent = data.detail || "清空失败";
+    els.settingsStatus.className = "status-line bad";
+    return;
+  }
+  els.settingsStatus.textContent = "记忆已清空";
+  els.settingsStatus.className = "status-line ok";
+  addBubble("system", "长期记忆已清空");
+});
 els.btnClear.addEventListener("click", () => {
   state.history = [];
   els.chatLog.innerHTML = "";

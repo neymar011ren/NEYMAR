@@ -283,7 +283,34 @@ async def run_agent(
     history: list[dict[str, Any]] | None = None,
     max_rounds: int = 8,
 ) -> AsyncIterator[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [{"role": "system", "content": config.system_prompt}]
+    import asyncio
+
+    from memory_service import add_memory, format_memory_block, search_memories
+
+    system_prompt = config.system_prompt
+    recalled: list[dict[str, Any]] = []
+
+    if config.enable_memory and config.api_key:
+        yield {"type": "status", "message": "检索长期记忆…"}
+        try:
+            recalled = await asyncio.to_thread(search_memories, config, user_message)
+            block = format_memory_block(recalled)
+            if block:
+                system_prompt = f"{config.system_prompt}\n\n{block}"
+                yield {
+                    "type": "memory",
+                    "action": "recall",
+                    "count": len(recalled),
+                    "items": recalled,
+                }
+        except Exception as exc:  # noqa: BLE001
+            yield {
+                "type": "memory",
+                "action": "recall_error",
+                "message": f"记忆检索失败（已跳过）：{exc}",
+            }
+
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     if history:
         for item in history:
             role = item.get("role")
@@ -327,6 +354,25 @@ async def run_agent(
 
         final_text = content or ""
         yield {"type": "final", "content": final_text}
+
+        if config.enable_memory and config.api_key and final_text.strip():
+            yield {"type": "status", "message": "写入长期记忆…"}
+            try:
+                await asyncio.to_thread(
+                    add_memory,
+                    config,
+                    [
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": final_text},
+                    ],
+                )
+                yield {"type": "memory", "action": "write", "ok": True}
+            except Exception as exc:  # noqa: BLE001
+                yield {
+                    "type": "memory",
+                    "action": "write_error",
+                    "message": f"记忆写入失败（不影响本次回答）：{exc}",
+                }
         return
 
     yield {

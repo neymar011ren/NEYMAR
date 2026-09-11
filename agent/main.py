@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from config_store import AgentConfig, load_config, public_config, save_config
 from llm import LLMError, probe_connection, run_agent
+from memory_service import clear_memories, invalidate_memory_client, list_memories
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
@@ -29,6 +30,12 @@ class ConfigUpdate(BaseModel):
     system_prompt: str | None = None
     enable_tools: bool | None = None
     request_timeout_seconds: int | None = None
+    enable_memory: bool | None = None
+    memory_user_id: str | None = None
+    memory_embed_model: str | None = None
+    memory_llm_model: str | None = None
+    memory_top_k: int | None = None
+    memory_embed_dims: int | None = None
 
 
 class ChatRequest(BaseModel):
@@ -66,7 +73,32 @@ async def update_config(payload: ConfigUpdate) -> dict[str, Any]:
         saved = save_config(AgentConfig.model_validate(data))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    invalidate_memory_client()
     return public_config(saved)
+
+
+@app.get("/api/memory")
+async def get_memories(limit: int = 20) -> dict[str, Any]:
+    config = load_config()
+    if not config.enable_memory:
+        raise HTTPException(status_code=400, detail="记忆系统未启用")
+    try:
+        items = list_memories(config, limit=max(1, min(limit, 100)))
+        return {"ok": True, "user_id": config.memory_user_id, "items": items}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/memory")
+async def delete_memories() -> dict[str, Any]:
+    config = load_config()
+    if not config.enable_memory:
+        raise HTTPException(status_code=400, detail="记忆系统未启用")
+    try:
+        result = clear_memories(config)
+        return result
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/config/test")

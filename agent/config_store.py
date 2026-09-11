@@ -27,6 +27,13 @@ class AgentConfig(BaseModel):
     )
     enable_tools: bool = True
     request_timeout_seconds: int = Field(default=120, ge=10, le=600)
+    # Mem0 长期记忆（本地 Qdrant）
+    enable_memory: bool = True
+    memory_user_id: str = Field(default="default", description="记忆命名空间 / 用户 ID")
+    memory_embed_model: str = Field(default="text-embedding-3-small", description="向量模型 ID")
+    memory_llm_model: str = Field(default="", description="记忆抽取用模型，空则复用主模型")
+    memory_top_k: int = Field(default=5, ge=1, le=20)
+    memory_embed_dims: int = Field(default=1536, ge=64, le=4096)
 
     @field_validator("protocol")
     @classmethod
@@ -40,6 +47,12 @@ class AgentConfig(BaseModel):
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         return value.strip().rstrip("/")
+
+    @field_validator("memory_user_id")
+    @classmethod
+    def normalize_user_id(cls, value: str) -> str:
+        cleaned = (value or "").strip() or "default"
+        return cleaned[:64]
 
 
 DEFAULT_CONFIG = AgentConfig()
