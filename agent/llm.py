@@ -290,7 +290,7 @@ async def run_agent(
     system_prompt = config.system_prompt
     recalled: list[dict[str, Any]] = []
 
-    if config.enable_memory and config.api_key:
+    if config.enable_memory and config.api_key and config.memory_embed_api_key and config.memory_embed_base_url:
         yield {"type": "status", "message": "检索长期记忆…"}
         try:
             recalled = await asyncio.to_thread(search_memories, config, user_message)
@@ -355,7 +355,13 @@ async def run_agent(
         final_text = content or ""
         yield {"type": "final", "content": final_text}
 
-        if config.enable_memory and config.api_key and final_text.strip():
+        if (
+            config.enable_memory
+            and config.api_key
+            and config.memory_embed_api_key
+            and config.memory_embed_base_url
+            and final_text.strip()
+        ):
             yield {"type": "status", "message": "写入长期记忆…"}
             try:
                 await asyncio.to_thread(

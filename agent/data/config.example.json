@@ -10,6 +10,8 @@
   "request_timeout_seconds": 120,
   "enable_memory": true,
   "memory_user_id": "default",
+  "memory_embed_base_url": "https://api.openai.com/v1",
+  "memory_embed_api_key": "",
   "memory_embed_model": "text-embedding-3-small",
   "memory_llm_model": "",
   "memory_top_k": 5,

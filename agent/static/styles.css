@@ -333,6 +333,16 @@ textarea:focus, input:focus, select:focus {
   align-items: center;
 }
 .checkbox input { width: auto; }
+.section-divider {
+  margin: 6px 0 2px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }

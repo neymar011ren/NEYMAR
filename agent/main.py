@@ -32,6 +32,8 @@ class ConfigUpdate(BaseModel):
     request_timeout_seconds: int | None = None
     enable_memory: bool | None = None
     memory_user_id: str | None = None
+    memory_embed_base_url: str | None = None
+    memory_embed_api_key: str | None = None
     memory_embed_model: str | None = None
     memory_llm_model: str | None = None
     memory_top_k: int | None = None
@@ -67,6 +69,10 @@ async def update_config(payload: ConfigUpdate) -> dict[str, Any]:
     # 空字符串表示保持原 API Key 不变
     if "api_key" in updates and (updates["api_key"] is None or updates["api_key"] == ""):
         updates.pop("api_key")
+    if "memory_embed_api_key" in updates and (
+        updates["memory_embed_api_key"] is None or updates["memory_embed_api_key"] == ""
+    ):
+        updates.pop("memory_embed_api_key")
 
     data.update(updates)
     try:

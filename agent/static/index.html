@@ -130,27 +130,41 @@
           <small>不同 ID 隔离记忆；多用户/多人格可分开。</small>
         </label>
 
-        <div class="grid-2">
-          <label>
-            <span>记忆抽取模型</span>
-            <input name="memory_llm_model" placeholder="空=复用主模型" />
-          </label>
-          <label>
-            <span>向量模型</span>
-            <input name="memory_embed_model" placeholder="text-embedding-3-small" />
-          </label>
-        </div>
+        <label>
+          <span>记忆抽取模型</span>
+          <input name="memory_llm_model" placeholder="空=复用上方文本模型" />
+          <small>抽取仍走文本模型的 Base URL / Key。</small>
+        </label>
+
+        <div class="section-divider">向量模型（独立配置）</div>
+
+        <label>
+          <span>向量 API Base URL</span>
+          <input name="memory_embed_base_url" placeholder="https://embed.example.com/v1" />
+          <small>与文本模型分开；通常填到 /v1。</small>
+        </label>
+
+        <label>
+          <span>向量 API Key</span>
+          <input name="memory_embed_api_key" type="password" placeholder="留空则保持原 Key 不变" autocomplete="off" />
+          <small id="embed-key-hint">当前未设置向量 Key</small>
+        </label>
 
         <div class="grid-2">
           <label>
-            <span>检索条数 Top-K</span>
-            <input name="memory_top_k" type="number" min="1" max="20" step="1" />
+            <span>向量模型 ID</span>
+            <input name="memory_embed_model" placeholder="text-embedding-3-small" />
           </label>
           <label>
             <span>向量维度</span>
             <input name="memory_embed_dims" type="number" min="64" max="4096" step="1" />
           </label>
         </div>
+
+        <label>
+          <span>检索条数 Top-K</span>
+          <input name="memory_top_k" type="number" min="1" max="20" step="1" />
+        </label>
 
         <div class="drawer-actions memory-actions">
           <button id="btn-list-memory" class="ghost-btn" type="button">查看记忆</button>

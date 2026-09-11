@@ -42,15 +42,17 @@ python run.py
 | `enable_tools` | 是否允许 Agent 调用本地文件工具 |
 | `enable_memory` | 是否启用 Mem0 长期记忆 |
 | `memory_user_id` | 记忆命名空间（多用户隔离） |
-| `memory_embed_model` | 向量模型（需你的 API 支持 embeddings） |
-| `memory_llm_model` | 记忆抽取模型，空则复用主模型 |
+| `memory_embed_base_url` | **向量模型独立 Base URL**（与文本模型分开） |
+| `memory_embed_api_key` | **向量模型独立 API Key** |
+| `memory_embed_model` | 向量模型 ID |
+| `memory_llm_model` | 记忆抽取模型，空则复用主模型（仍用文本模型地址/密钥） |
 | `memory_top_k` | 每轮检索注入的记忆条数 |
 
 示例文件：`data/config.example.json`。首次启动会自动复制为 `data/config.json`。
 
 记忆数据目录：`data/memory/`（本地 Qdrant + history.db，已随 `data/` 敏感路径屏蔽，工具无法读取）。
 
-> 注意：Mem0 的抽取与向量化走 **OpenAI 兼容** 的 Chat / Embeddings 接口。即使主对话选了 Responses/Messages，记忆子系统仍会用你的 Base URL 下的兼容端点；请确保上游提供 embeddings。
+> 文本模型与向量模型的地址/密钥完全独立配置。Mem0 抽取走文本模型兼容 Chat；向量化走你单独填写的 Embeddings 端点。
 
 ## 安全提示
 

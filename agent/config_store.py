@@ -30,6 +30,11 @@ class AgentConfig(BaseModel):
     # Mem0 长期记忆（本地 Qdrant）
     enable_memory: bool = True
     memory_user_id: str = Field(default="default", description="记忆命名空间 / 用户 ID")
+    memory_embed_base_url: str = Field(
+        default="",
+        description="向量模型 API Base URL（独立配置，勿与文本模型混用）",
+    )
+    memory_embed_api_key: str = Field(default="", description="向量模型 API Key")
     memory_embed_model: str = Field(default="text-embedding-3-small", description="向量模型 ID")
     memory_llm_model: str = Field(default="", description="记忆抽取用模型，空则复用主模型")
     memory_top_k: int = Field(default=5, ge=1, le=20)
@@ -43,10 +48,10 @@ class AgentConfig(BaseModel):
             raise ValueError(f"protocol 必须是 {sorted(allowed)} 之一")
         return value
 
-    @field_validator("api_base_url")
+    @field_validator("api_base_url", "memory_embed_base_url")
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
-        return value.strip().rstrip("/")
+        return (value or "").strip().rstrip("/")
 
     @field_validator("memory_user_id")
     @classmethod
@@ -99,6 +104,9 @@ def public_config(config: AgentConfig | None = None) -> dict[str, Any]:
     data = deepcopy(cfg.model_dump())
     data["api_key_masked"] = mask_secret(cfg.api_key)
     data["api_key_set"] = bool(cfg.api_key)
+    data["memory_embed_api_key_masked"] = mask_secret(cfg.memory_embed_api_key)
+    data["memory_embed_api_key_set"] = bool(cfg.memory_embed_api_key)
     # 前端编辑时默认不回传明文 key；若用户未改 key，提交空字符串表示保持原值
     data["api_key"] = ""
+    data["memory_embed_api_key"] = ""
     return data

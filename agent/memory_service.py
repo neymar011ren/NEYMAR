@@ -30,7 +30,10 @@ def _cache_key(config: AgentConfig) -> str:
             openai_compatible_base(config.api_base_url),
             config.api_key,
             config.memory_llm_model or config.model,
+            openai_compatible_base(config.memory_embed_base_url),
+            config.memory_embed_api_key,
             config.memory_embed_model,
+            str(config.memory_embed_dims),
             str(QDRANT_PATH),
         ]
     )
@@ -49,7 +52,11 @@ def get_memory_client(config: AgentConfig):
     if not config.enable_memory:
         raise RuntimeError("记忆系统未启用")
     if not config.api_key:
-        raise RuntimeError("记忆系统需要有效的 API Key（用于抽取与向量化）")
+        raise RuntimeError("记忆抽取需要文本模型 API Key")
+    if not config.memory_embed_base_url:
+        raise RuntimeError("请单独配置向量模型 API Base URL")
+    if not config.memory_embed_api_key:
+        raise RuntimeError("请单独配置向量模型 API Key")
 
     key = _cache_key(config)
     with _lock:
@@ -59,7 +66,8 @@ def get_memory_client(config: AgentConfig):
         MEMORY_DIR.mkdir(parents=True, exist_ok=True)
         from mem0 import Memory
 
-        base = openai_compatible_base(config.api_base_url)
+        text_base = openai_compatible_base(config.api_base_url)
+        embed_base = openai_compatible_base(config.memory_embed_base_url)
         llm_model = config.memory_llm_model or config.model
         mem_config = {
             "vector_store": {
@@ -75,7 +83,7 @@ def get_memory_client(config: AgentConfig):
                 "config": {
                     "model": llm_model,
                     "api_key": config.api_key,
-                    "openai_base_url": base,
+                    "openai_base_url": text_base,
                     "temperature": 0.1,
                     "max_tokens": 1024,
                 },
@@ -84,8 +92,8 @@ def get_memory_client(config: AgentConfig):
                 "provider": "openai",
                 "config": {
                     "model": config.memory_embed_model,
-                    "api_key": config.api_key,
-                    "openai_base_url": base,
+                    "api_key": config.memory_embed_api_key,
+                    "openai_base_url": embed_base,
                 },
             },
             "history_db_path": str(HISTORY_DB),

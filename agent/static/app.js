@@ -66,6 +66,8 @@ function fillSettingsForm(config) {
   form.enable_memory.checked = !!config.enable_memory;
   form.memory_user_id.value = config.memory_user_id || "default";
   form.memory_llm_model.value = config.memory_llm_model || "";
+  form.memory_embed_base_url.value = config.memory_embed_base_url || "";
+  form.memory_embed_api_key.value = "";
   form.memory_embed_model.value = config.memory_embed_model || "text-embedding-3-small";
   form.memory_top_k.value = config.memory_top_k ?? 5;
   form.memory_embed_dims.value = config.memory_embed_dims ?? 1536;
@@ -73,6 +75,12 @@ function fillSettingsForm(config) {
   els.keyHint.textContent = config.api_key_set
     ? `当前已设置 Key：${config.api_key_masked}`
     : "当前未设置 Key";
+  const embedHint = document.getElementById("embed-key-hint");
+  if (embedHint) {
+    embedHint.textContent = config.memory_embed_api_key_set
+      ? `当前已设置向量 Key：${config.memory_embed_api_key_masked}`
+      : "当前未设置向量 Key";
+  }
 }
 
 function refreshMeta(config) {
@@ -107,6 +115,8 @@ async function saveConfig(event) {
     enable_memory: form.enable_memory.checked,
     memory_user_id: form.memory_user_id.value.trim() || "default",
     memory_llm_model: form.memory_llm_model.value.trim(),
+    memory_embed_base_url: form.memory_embed_base_url.value.trim(),
+    memory_embed_api_key: form.memory_embed_api_key.value,
     memory_embed_model: form.memory_embed_model.value.trim() || "text-embedding-3-small",
     memory_top_k: Number(form.memory_top_k.value),
     memory_embed_dims: Number(form.memory_embed_dims.value),
