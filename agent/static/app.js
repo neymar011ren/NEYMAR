@@ -28,13 +28,165 @@ const PROTOCOL_LABEL = {
   anthropic_messages: "Anthropic Messages",
 };
 
-function addBubble(role, text) {
+function scrollChat() {
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
+function addNotice(text, kind = "") {
   const div = document.createElement("div");
-  div.className = `bubble ${role}`;
+  div.className = `notice ${kind}`.trim();
   div.textContent = text;
   els.chatLog.appendChild(div);
-  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+  scrollChat();
   return div;
+}
+
+function addUserBubble(text) {
+  const div = document.createElement("div");
+  div.className = "bubble-user";
+  div.textContent = text;
+  els.chatLog.appendChild(div);
+  scrollChat();
+  return div;
+}
+
+function createTurnCard() {
+  const turn = document.createElement("article");
+  turn.className = "turn";
+  turn.innerHTML = `
+    <section class="turn-section sec-think hidden">
+      <div class="section-head">
+        <span class="section-label think">思考过程</span>
+      </div>
+      <div class="think-log"></div>
+    </section>
+    <section class="turn-section sec-tools hidden">
+      <div class="section-head">
+        <span class="section-label tools">工具调用</span>
+        <button type="button" class="section-toggle" data-collapse="tools">收起</button>
+      </div>
+      <div class="tool-log"></div>
+    </section>
+    <section class="turn-section sec-memory hidden">
+      <div class="section-head">
+        <span class="section-label memory">记忆</span>
+      </div>
+      <div class="memory-log"></div>
+    </section>
+    <section class="turn-section sec-answer hidden">
+      <div class="section-head">
+        <span class="section-label answer">回复正文</span>
+      </div>
+      <div class="answer-body"></div>
+    </section>
+    <section class="turn-section sec-refs hidden">
+      <div class="section-head">
+        <span class="section-label refs">参考资料</span>
+      </div>
+      <ol class="ref-list"></ol>
+    </section>
+  `;
+  const api = {
+    root: turn,
+    think: turn.querySelector(".think-log"),
+    tools: turn.querySelector(".tool-log"),
+    memory: turn.querySelector(".memory-log"),
+    answer: turn.querySelector(".answer-body"),
+    refs: turn.querySelector(".ref-list"),
+    secThink: turn.querySelector(".sec-think"),
+    secTools: turn.querySelector(".sec-tools"),
+    secMemory: turn.querySelector(".sec-memory"),
+    secAnswer: turn.querySelector(".sec-answer"),
+    secRefs: turn.querySelector(".sec-refs"),
+  };
+  turn.querySelector("[data-collapse=tools]")?.addEventListener("click", (ev) => {
+    const btn = ev.currentTarget;
+    const collapsed = api.tools.classList.toggle("hidden");
+    btn.textContent = collapsed ? "展开" : "收起";
+  });
+  els.chatLog.appendChild(turn);
+  scrollChat();
+  return api;
+}
+
+function showSection(section) {
+  section.classList.remove("hidden");
+}
+
+function appendThink(turn, message) {
+  showSection(turn.secThink);
+  const item = document.createElement("div");
+  item.className = "think-item";
+  item.textContent = message;
+  turn.think.appendChild(item);
+  scrollChat();
+}
+
+function appendMemory(turn, message) {
+  showSection(turn.secMemory);
+  const item = document.createElement("div");
+  item.className = "memory-item";
+  item.textContent = message;
+  turn.memory.appendChild(item);
+  scrollChat();
+}
+
+function appendTool(turn, kind, name, body) {
+  showSection(turn.secTools);
+  const item = document.createElement("div");
+  item.className = `tool-item ${kind === "result" ? "result" : ""}`.trim();
+  const title = document.createElement("div");
+  title.className = "tool-name";
+  title.textContent = kind === "call" ? `调用 · ${name}` : `结果 · ${name}`;
+  const pre = document.createElement("pre");
+  try {
+    const parsed = JSON.parse(body);
+    pre.textContent = JSON.stringify(parsed, null, 2);
+  } catch {
+    pre.textContent = body || "";
+  }
+  item.appendChild(title);
+  item.appendChild(pre);
+  turn.tools.appendChild(item);
+  scrollChat();
+}
+
+function appendDelta(turn, piece) {
+  showSection(turn.secAnswer);
+  turn.answer.classList.add("streaming");
+  turn.answer.textContent += piece;
+  scrollChat();
+}
+
+function finalizeAnswer(turn, content, references) {
+  showSection(turn.secAnswer);
+  turn.answer.classList.remove("streaming");
+  turn.answer.textContent = content || "(空回复)";
+  if (Array.isArray(references) && references.length) {
+    showSection(turn.secRefs);
+    turn.refs.innerHTML = "";
+    for (const ref of references) {
+      const li = document.createElement("li");
+      if (ref.url) {
+        const a = document.createElement("a");
+        a.href = ref.url;
+        a.target = "_blank";
+        a.rel = "noreferrer";
+        a.textContent = ref.title || ref.url;
+        li.appendChild(a);
+      } else {
+        li.textContent = ref.title || "";
+      }
+      turn.refs.appendChild(li);
+    }
+  }
+  scrollChat();
+}
+
+function resetAnswerStream(turn) {
+  turn.answer.textContent = "";
+  turn.answer.classList.remove("streaming");
+  turn.secAnswer.classList.add("hidden");
 }
 
 function setBusy(busy) {
@@ -152,10 +304,7 @@ async function testConnection() {
   els.settingsStatus.className = "status-line";
   els.connPill.textContent = "检测中";
   els.connPill.className = "pill";
-
-  // 先保存当前表单，确保测的是最新填写内容
   await saveConfig(new Event("submit"));
-
   const res = await fetch("/api/config/test", { method: "POST" });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -178,12 +327,13 @@ async function sendMessage(event) {
   const message = els.chatInput.value.trim();
   if (!message) return;
 
-  addBubble("user", message);
+  addUserBubble(message);
   state.history.push({ role: "user", content: message });
   els.chatInput.value = "";
   setBusy(true);
 
-  const statusBubble = addBubble("system", "处理中…");
+  const turn = createTurnCard();
+  appendThink(turn, "处理中…");
 
   try {
     const res = await fetch("/api/chat", {
@@ -213,35 +363,36 @@ async function sendMessage(event) {
         const line = chunk.trim();
         if (!line.startsWith("data:")) continue;
         const payload = JSON.parse(line.slice(5).trim());
-        if (payload.type === "status") {
-          statusBubble.textContent = payload.message;
+        if (payload.type === "phase" || payload.type === "status") {
+          appendThink(turn, payload.message || "");
+        } else if (payload.type === "delta") {
+          appendDelta(turn, payload.content || "");
+        } else if (payload.type === "round_reset") {
+          resetAnswerStream(turn);
         } else if (payload.type === "tool_call") {
-          addBubble("tool", `调用工具 ${payload.name}\n${payload.arguments}`);
+          appendTool(turn, "call", payload.name, payload.arguments || "");
         } else if (payload.type === "tool_result") {
-          addBubble("tool", `工具结果 ${payload.name}\n${payload.result}`);
+          appendTool(turn, "result", payload.name, payload.result || "");
         } else if (payload.type === "memory") {
           if (payload.action === "recall" && payload.items?.length) {
             const lines = payload.items.map((item, i) => `${i + 1}. ${item.memory}`).join("\n");
-            addBubble("system", `召回 ${payload.count} 条记忆：\n${lines}`);
+            appendMemory(turn, `召回 ${payload.count} 条：\n${lines}`);
           } else if (payload.action === "write") {
-            addBubble("system", "本轮对话已写入长期记忆");
+            appendMemory(turn, `本轮已写入长期记忆（${payload.backend || "local"}）`);
           } else if (payload.action === "recall_error" || payload.action === "write_error") {
-            addBubble("tool", payload.message || "记忆操作失败");
+            appendMemory(turn, payload.message || "记忆操作失败");
           }
         } else if (payload.type === "final") {
-          finalText = payload.content || "";
-          statusBubble.remove();
-          addBubble("assistant", finalText || "(空回复)");
-          state.history.push({ role: "assistant", content: finalText || "" });
+          finalText = payload.content || payload.raw || "";
+          finalizeAnswer(turn, finalText, payload.references || []);
+          state.history.push({ role: "assistant", content: payload.raw || finalText || "" });
         } else if (payload.type === "error") {
-          statusBubble.remove();
-          addBubble("error", payload.message || "未知错误");
+          addNotice(payload.message || "未知错误", "error");
         }
       }
     }
   } catch (err) {
-    statusBubble.remove();
-    addBubble("error", err.message || String(err));
+    addNotice(err.message || String(err), "error");
   } finally {
     setBusy(false);
   }
@@ -266,10 +417,9 @@ document.getElementById("btn-list-memory").addEventListener("click", async () =>
   }
   const items = data.items || [];
   if (!items.length) {
-    addBubble("system", `用户 ${data.user_id} 暂无长期记忆`);
+    addNotice(`用户 ${data.user_id} 暂无长期记忆`);
   } else {
-    addBubble(
-      "system",
+    addNotice(
       `用户 ${data.user_id} 的记忆（${items.length}）：\n` +
         items.map((item, i) => `${i + 1}. ${item.memory}`).join("\n"),
     );
@@ -289,12 +439,12 @@ document.getElementById("btn-clear-memory").addEventListener("click", async () =
   }
   els.settingsStatus.textContent = "记忆已清空";
   els.settingsStatus.className = "status-line ok";
-  addBubble("system", "长期记忆已清空");
+  addNotice("长期记忆已清空");
 });
 els.btnClear.addEventListener("click", () => {
   state.history = [];
   els.chatLog.innerHTML = "";
-  addBubble("system", "对话已清空。可先打开右上角「模型配置」填入你的 API。");
+  addNotice("对话已清空。可先打开右上角「模型配置」填入你的 API。");
 });
 els.chatInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
@@ -303,7 +453,7 @@ els.chatInput.addEventListener("keydown", (event) => {
   }
 });
 
-addBubble("system", "欢迎使用 Forge Agent。先打开「模型配置」，填入你的模型 API，然后即可对话。");
+addNotice("欢迎使用 Judger Agent。先配置上游模型，再输入例如：我想把金山云模型配置到 WorkBuddy");
 loadConfig().catch((err) => {
-  addBubble("error", err.message || String(err));
+  addNotice(err.message || String(err), "error");
 });

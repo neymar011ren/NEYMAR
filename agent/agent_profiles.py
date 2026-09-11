@@ -151,14 +151,32 @@ def resolve_profile(agent_id: str) -> AgentProfile | None:
 
 
 def detect_from_text(text: str) -> list[dict[str, Any]]:
-    lowered = (text or "").lower()
+    import re
+
+    raw = text or ""
+    lowered = raw.lower()
+    # 支持 "w o r k b u d d y" / "wo r k bu d d y" 这类间隔拼写
+    collapsed_spaces = re.sub(r"(?<=[a-zA-Z])\s+(?=[a-zA-Z])", "", lowered)
+    compact = re.sub(r"[\s\-_.]+", "", collapsed_spaces)
+
     scored: list[tuple[int, AgentProfile]] = []
     for profile in AGENT_PROFILES.values():
         score = 0
-        for alias in (profile.name.lower(), profile.id.replace("_", " "), *profile.aliases):
-            alias_l = alias.lower()
-            if alias_l and alias_l in lowered:
-                score += max(2, len(alias_l) // 2)
+        candidates = {
+            profile.name.lower(),
+            profile.id.replace("_", " "),
+            profile.id.replace("_", ""),
+            *profile.aliases,
+        }
+        for alias in candidates:
+            alias_l = alias.lower().strip()
+            if not alias_l:
+                continue
+            alias_compact = re.sub(r"[\s\-_.]+", "", alias_l)
+            if alias_l in lowered or alias_l in collapsed_spaces:
+                score += max(3, len(alias_l) // 2)
+            elif alias_compact and alias_compact in compact:
+                score += max(4, len(alias_compact) // 2 + 1)
         if score:
             scored.append((score, profile))
     scored.sort(key=lambda x: (-x[0], x[1].id))

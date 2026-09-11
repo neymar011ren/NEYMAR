@@ -54,6 +54,109 @@ async def _post_json(config: AgentConfig, url: str, payload: dict[str, Any]) -> 
     return response.json()
 
 
+def _build_chat_payload(config: AgentConfig, messages: list[dict[str, Any]], *, stream: bool) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": config.model,
+        "messages": messages,
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
+        "stream": stream,
+    }
+    tools: list[dict[str, Any]] = []
+    if config.enable_web_search:
+        tools.append({"type": "web_search"})
+    if config.enable_tools:
+        tools.extend(TOOL_DEFINITIONS)
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+    return payload
+
+
+def _merge_tool_call_delta(
+    bucket: dict[int, dict[str, Any]],
+    tc_delta: dict[str, Any],
+) -> None:
+    idx = int(tc_delta.get("index") or 0)
+    slot = bucket.setdefault(
+        idx,
+        {
+            "id": "",
+            "type": "function",
+            "function": {"name": "", "arguments": ""},
+        },
+    )
+    if tc_delta.get("id"):
+        slot["id"] = tc_delta["id"]
+    if tc_delta.get("type"):
+        slot["type"] = tc_delta["type"]
+    fn = tc_delta.get("function") or {}
+    if fn.get("name"):
+        slot["function"]["name"] += fn["name"]
+    if fn.get("arguments"):
+        slot["function"]["arguments"] += fn["arguments"]
+
+
+async def _stream_chat_completions(
+    config: AgentConfig,
+    messages: list[dict[str, Any]],
+) -> AsyncIterator[dict[str, Any]]:
+    """流式调用 Chat Completions，产出 delta / message 事件。"""
+    payload = _build_chat_payload(config, messages, stream=True)
+    url = _chat_url(config)
+    timeout = httpx.Timeout(config.request_timeout_seconds)
+    content_parts: list[str] = []
+    tool_buckets: dict[int, dict[str, Any]] = {}
+    web_search_queries = None
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST", url, headers=_auth_headers(config), json=payload) as response:
+            if response.status_code >= 400:
+                body = await response.aread()
+                raise LLMError(f"上游 API {response.status_code}: {body[:1200].decode('utf-8', errors='replace')}")
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                if line.startswith(":"):
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                data_str = line[5:].strip()
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+                usage = chunk.get("usage")
+                if isinstance(usage, dict) and "web_search_queries" in usage:
+                    web_search_queries = usage.get("web_search_queries")
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                piece = delta.get("content")
+                if piece:
+                    content_parts.append(piece)
+                    yield {"type": "delta", "content": piece}
+                for tc in delta.get("tool_calls") or []:
+                    if isinstance(tc, dict):
+                        _merge_tool_call_delta(tool_buckets, tc)
+
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": "".join(content_parts) or None,
+    }
+    if tool_buckets:
+        message["tool_calls"] = [tool_buckets[i] for i in sorted(tool_buckets)]
+        for call in message["tool_calls"]:
+            if not call.get("id"):
+                call["id"] = f"call_{call['function'].get('name', 'tool')}"
+    if web_search_queries is not None:
+        message["_web_search_queries"] = web_search_queries
+    yield {"type": "message", "message": message}
+
+
 def _extract_chat_message(data: dict[str, Any]) -> dict[str, Any]:
     try:
         return data["choices"][0]["message"]
@@ -220,22 +323,7 @@ async def call_model(config: AgentConfig, messages: list[dict[str, Any]]) -> dic
         raise LLMError("尚未配置模型 ID。")
 
     if config.protocol == "chat_completions":
-        payload: dict[str, Any] = {
-            "model": config.model,
-            "messages": messages,
-            "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
-        }
-        tools: list[dict[str, Any]] = []
-        # 金山云等兼容接口：tools 中加入 {"type":"web_search"} 开启联网搜索
-        # 参考：https://docs.ksyun.com/documents/45179
-        if config.enable_web_search:
-            tools.append({"type": "web_search"})
-        if config.enable_tools:
-            tools.extend(TOOL_DEFINITIONS)
-        if tools:
-            payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+        payload = _build_chat_payload(config, messages, stream=False)
         data = await _post_json(config, _chat_url(config), payload)
         message = _extract_chat_message(data)
         usage = data.get("usage") if isinstance(data, dict) else None
@@ -295,6 +383,82 @@ async def call_model(config: AgentConfig, messages: list[dict[str, Any]]) -> dic
     raise LLMError(f"不支持的协议: {config.protocol}")
 
 
+async def iter_model_events(
+    config: AgentConfig,
+    messages: list[dict[str, Any]],
+) -> AsyncIterator[dict[str, Any]]:
+    """统一模型调用事件流：优先 Chat Completions 真流式，其他协议回退一次性。"""
+    if not config.api_key:
+        raise LLMError("尚未配置 API Key，请先在设置页填写。")
+    if not config.model:
+        raise LLMError("尚未配置模型 ID。")
+    if config.protocol == "chat_completions":
+        async for event in _stream_chat_completions(config, messages):
+            yield event
+        return
+    message = await call_model(config, messages)
+    content = message.get("content") or ""
+    # 非流式协议：按块伪流式，改善观感
+    step = 24
+    for i in range(0, len(content), step):
+        yield {"type": "delta", "content": content[i : i + step]}
+    yield {"type": "message", "message": message}
+
+
+def _split_answer_and_refs(text: str) -> tuple[str, list[dict[str, str]]]:
+    """把正文与参考资料粗分，便于前端分区。"""
+    if not text:
+        return "", []
+    import re
+
+    patterns = [
+        r"\n---+\s*\n\s*\*{0,2}参考资料\*{0,2}\s*[:：]?\*{0,2}\s*\n",
+        r"\n\*{0,2}参考资料\*{0,2}\s*[:：]?\*{0,2}\s*\n",
+        r"\n参考资料\s*[:：]\s*\n",
+    ]
+    split_at = None
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            split_at = m
+            break
+    if not split_at:
+        # 兜底：单独一行的“参考资料”
+        m = re.search(r"\n[^\S\n]*参考资料[^\n]*\n", text)
+        if m:
+            split_at = m
+    if not split_at:
+        return text, []
+    body = text[: split_at.start()].rstrip()
+    # 若正文末尾残留 --- 分隔线，去掉
+    body = re.sub(r"\n---+\s*$", "", body).rstrip()
+    refs_raw = text[split_at.end() :]
+    refs: list[dict[str, str]] = []
+    for line in refs_raw.splitlines():
+        line = line.strip().lstrip("-").strip()
+        if not line:
+            continue
+        m = re.match(r"^(?:\d+[\.\)]\s*)?\[([^\]]+)\]\(([^)]+)\)\s*$", line)
+        if m:
+            refs.append({"title": m.group(1), "url": m.group(2)})
+            continue
+        m2 = re.match(r"^(?:\d+[\.\)]\s*)?(.+?)\s*[—\-]\s*(https?://\S+)\s*$", line)
+        if m2:
+            refs.append({"title": m2.group(1).strip(), "url": m2.group(2)})
+            continue
+        m3 = re.search(r"(https?://\S+)", line)
+        if m3:
+            refs.append(
+                {
+                    "title": line.replace(m3.group(1), "").strip(" -—:") or m3.group(1),
+                    "url": m3.group(1).rstrip(")，。]"),
+                }
+            )
+        else:
+            refs.append({"title": line, "url": ""})
+    return body, refs
+
+
 async def run_agent(
     config: AgentConfig,
     user_message: str,
@@ -308,8 +472,8 @@ async def run_agent(
     system_prompt = config.system_prompt
     recalled: list[dict[str, Any]] = []
 
-    if config.enable_memory and config.api_key and config.memory_embed_api_key and config.memory_embed_base_url:
-        yield {"type": "status", "message": "检索长期记忆…"}
+    if config.enable_memory and config.api_key:
+        yield {"type": "phase", "phase": "memory", "message": "检索长期记忆…"}
         try:
             recalled = await asyncio.to_thread(search_memories, config, user_message)
             block = format_memory_block(recalled)
@@ -321,6 +485,8 @@ async def run_agent(
                     "count": len(recalled),
                     "items": recalled,
                 }
+            else:
+                yield {"type": "phase", "phase": "memory", "message": "暂无相关记忆"}
         except Exception as exc:  # noqa: BLE001
             yield {
                 "type": "memory",
@@ -337,21 +503,37 @@ async def run_agent(
                 messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": user_message})
 
-    yield {"type": "status", "message": "开始处理…"}
+    yield {"type": "phase", "phase": "think", "message": "开始处理…"}
 
     for round_idx in range(max_rounds):
-        yield {"type": "status", "message": f"调用模型（第 {round_idx + 1} 轮）…"}
-        assistant = await call_model(config, messages)
+        yield {
+            "type": "phase",
+            "phase": "think",
+            "message": f"调用模型（第 {round_idx + 1} 轮）…",
+        }
+        assistant: dict[str, Any] | None = None
+        saw_delta = False
+        async for event in iter_model_events(config, messages):
+            if event.get("type") == "delta":
+                piece = event.get("content") or ""
+                if piece:
+                    saw_delta = True
+                    yield {"type": "delta", "content": piece}
+            elif event.get("type") == "message":
+                assistant = event["message"]
+        if assistant is None:
+            raise LLMError("模型未返回消息")
+
         tool_calls = assistant.get("tool_calls") or []
         content = assistant.get("content")
         web_search_queries = assistant.pop("_web_search_queries", None)
         if web_search_queries is not None:
             yield {
-                "type": "status",
+                "type": "phase",
+                "phase": "think",
                 "message": f"联网搜索次数：{web_search_queries}",
             }
 
-        # 仅执行本地 function 工具；web_search 由上游服务端完成
         local_tool_calls = [
             call
             for call in tool_calls
@@ -359,6 +541,8 @@ async def run_agent(
         ]
 
         if local_tool_calls and config.enable_tools:
+            if saw_delta:
+                yield {"type": "round_reset", "reason": "tool_calls"}
             messages.append(assistant)
             for call in local_tool_calls:
                 name = call.get("function", {}).get("name") or ""
@@ -384,18 +568,19 @@ async def run_agent(
             continue
 
         final_text = content or ""
-        yield {"type": "final", "content": final_text}
+        # 非流式协议可能只伪流式推过 delta；若完全没推过则补一次
+        if not saw_delta and final_text:
+            yield {"type": "phase", "phase": "answer", "message": "生成回复…"}
+            step = 32
+            for i in range(0, len(final_text), step):
+                yield {"type": "delta", "content": final_text[i : i + step]}
+        body, refs = _split_answer_and_refs(final_text)
+        yield {"type": "final", "content": body, "raw": final_text, "references": refs}
 
-        if (
-            config.enable_memory
-            and config.api_key
-            and config.memory_embed_api_key
-            and config.memory_embed_base_url
-            and final_text.strip()
-        ):
-            yield {"type": "status", "message": "写入长期记忆…"}
+        if config.enable_memory and config.api_key and final_text.strip():
+            yield {"type": "phase", "phase": "memory", "message": "写入长期记忆…"}
             try:
-                await asyncio.to_thread(
+                result = await asyncio.to_thread(
                     add_memory,
                     config,
                     [
@@ -403,7 +588,12 @@ async def run_agent(
                         {"role": "assistant", "content": final_text},
                     ],
                 )
-                yield {"type": "memory", "action": "write", "ok": True}
+                yield {
+                    "type": "memory",
+                    "action": "write",
+                    "ok": True,
+                    "backend": (result or {}).get("backend", "local"),
+                }
             except Exception as exc:  # noqa: BLE001
                 yield {
                     "type": "memory",
@@ -415,6 +605,8 @@ async def run_agent(
     yield {
         "type": "final",
         "content": "已达到最大工具循环次数，请拆分任务后重试。",
+        "raw": "",
+        "references": [],
     }
 
 

@@ -51,7 +51,14 @@ class AgentConfig(BaseModel):
     @field_validator("api_base_url", "memory_embed_base_url")
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
-        return (value or "").strip().rstrip("/")
+        cleaned = (value or "").strip().rstrip("/")
+        if cleaned.startswith("ttps://"):
+            cleaned = "h" + cleaned
+        elif cleaned.startswith("ttp://"):
+            cleaned = "h" + cleaned
+        if cleaned and "://" not in cleaned:
+            cleaned = "https://" + cleaned
+        return cleaned
 
     @field_validator("memory_user_id")
     @classmethod

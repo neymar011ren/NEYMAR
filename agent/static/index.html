@@ -21,36 +21,24 @@
         </div>
       </div>
       <div class="top-actions">
+        <div class="meta-inline">
+          <span id="meta-model">—</span>
+          <span class="dot">·</span>
+          <span id="meta-protocol">—</span>
+          <span class="dot">·</span>
+          <span id="meta-tools">—</span>
+        </div>
         <button id="btn-open-settings" class="ghost-btn" type="button">模型配置</button>
         <span id="conn-pill" class="pill">未检测</span>
       </div>
     </header>
 
-    <main class="layout">
-      <section class="hero-panel">
-        <p class="kicker">判断器 · 渠道配置流水线</p>
-        <h2>把你的模型 API 配进目标对话 Agent：识别意图、查协议、转换、写入、测试。</h2>
-        <p class="lede">输入一句话即可。保留联网搜索与协议转换工具；判断器会引导你提供 Base URL、模型名与 Key。</p>
-        <div class="meta-row">
-          <div>
-            <span class="meta-label">当前模型</span>
-            <strong id="meta-model">—</strong>
-          </div>
-          <div>
-            <span class="meta-label">协议</span>
-            <strong id="meta-protocol">—</strong>
-          </div>
-          <div>
-            <span class="meta-label">工具</span>
-            <strong id="meta-tools">—</strong>
-          </div>
-        </div>
-      </section>
-
+    <main class="chat-shell">
+      <p class="shell-lede">把模型 API 配进目标 Agent：识别意图 → 查协议 → 转换 → 写入 → 测试。工具 / 思考 / 正文 / 参考分区展示。</p>
       <section class="chat-panel">
         <div id="chat-log" class="chat-log" aria-live="polite"></div>
         <form id="chat-form" class="composer">
-          <textarea id="chat-input" rows="3" placeholder="例如：我想把金山云模型配到 Claude Code / WorkBuddy"></textarea>
+          <textarea id="chat-input" rows="3" placeholder="例如：我想把金山云模型配置到 WorkBuddy"></textarea>
           <div class="composer-actions">
             <button id="btn-clear" class="ghost-btn" type="button">清空对话</button>
             <button id="btn-send" class="primary-btn" type="submit">发送</button>
@@ -70,25 +58,20 @@
         </div>
         <button class="icon-btn" type="button" data-close aria-label="关闭">×</button>
       </div>
-
       <form id="settings-form" class="settings-form">
         <label>
           <span>API Base URL</span>
-          <input name="api_base_url" placeholder="https://api.example.com/v1" required />
-          <small>填到 /v1 即可；若已是完整路径（含 /chat/completions）也可直接填。</small>
+          <input name="api_base_url" placeholder="https://xxx/v1" required />
         </label>
-
         <label>
           <span>API Key</span>
-          <input name="api_key" type="password" placeholder="留空则保持原 Key 不变" autocomplete="off" />
-          <small id="key-hint">当前未设置 Key</small>
+          <input name="api_key" type="password" placeholder="留空则保持原值" autocomplete="off" />
+          <small id="key-hint"></small>
         </label>
-
         <label>
           <span>模型 ID</span>
-          <input name="model" placeholder="claude-sonnet-4-6 / gpt-4o-mini" required />
+          <input name="model" required />
         </label>
-
         <label>
           <span>接口协议</span>
           <select name="protocol">
@@ -97,7 +80,6 @@
             <option value="anthropic_messages">Anthropic Messages</option>
           </select>
         </label>
-
         <div class="grid-2">
           <label>
             <span>Temperature</span>
@@ -108,7 +90,6 @@
             <input name="max_tokens" type="number" min="1" max="200000" step="1" />
           </label>
         </div>
-
         <label>
           <span>请求超时（秒）</span>
           <input name="request_timeout_seconds" type="number" min="10" max="600" step="1" />
@@ -118,73 +99,60 @@
           <input name="enable_tools" type="checkbox" />
           <span>启用本地工具（判断器工具集 + 文件 + 协议适配）</span>
         </label>
-        <small class="field-note">含 detect / probe / write / test_agent_channel 与 protocol_adapt；模型按判断器流水线自主调用。</small>
+        <small class="field-note">含 detect / probe / write / test_agent_channel 与 protocol_adapt。</small>
 
         <label class="checkbox">
           <input name="enable_web_search" type="checkbox" />
           <span>启用联网搜索（tools.type = web_search）</span>
         </label>
-        <small class="field-note">按金山云文档在请求中注入 web_search；需上游 Chat Completions 支持。参考 docs.ksyun.com/documents/45179</small>
+        <small class="field-note">按金山云文档注入 web_search。参考 docs.ksyun.com/documents/45179</small>
 
         <label class="checkbox">
           <input name="enable_memory" type="checkbox" />
-          <span>启用长期记忆（Mem0 + 本地 Qdrant）</span>
+          <span>启用长期记忆（本地优先，Mem0 可选）</span>
         </label>
 
         <label>
           <span>记忆用户 ID</span>
           <input name="memory_user_id" placeholder="default" />
-          <small>不同 ID 隔离记忆；多用户/多人格可分开。</small>
         </label>
-
         <label>
           <span>记忆抽取模型</span>
-          <input name="memory_llm_model" placeholder="空=复用上方文本模型" />
-          <small>抽取仍走文本模型的 Base URL / Key。</small>
+          <input name="memory_llm_model" placeholder="空则复用主模型" />
         </label>
-
-        <div class="section-divider">向量模型（独立配置）</div>
-
         <label>
-          <span>向量 API Base URL</span>
-          <input name="memory_embed_base_url" placeholder="https://embed.example.com/v1" />
-          <small>与文本模型分开；通常填到 /v1。</small>
+          <span>向量模型 Base URL</span>
+          <input name="memory_embed_base_url" placeholder="https://xxx/v1" />
         </label>
-
         <label>
-          <span>向量 API Key</span>
-          <input name="memory_embed_api_key" type="password" placeholder="留空则保持原 Key 不变" autocomplete="off" />
-          <small id="embed-key-hint">当前未设置向量 Key</small>
+          <span>向量模型 API Key</span>
+          <input name="memory_embed_api_key" type="password" placeholder="留空则保持原值" autocomplete="off" />
+          <small id="embed-key-hint"></small>
         </label>
-
+        <label>
+          <span>向量模型 ID</span>
+          <input name="memory_embed_model" />
+        </label>
         <div class="grid-2">
           <label>
-            <span>向量模型 ID</span>
-            <input name="memory_embed_model" placeholder="text-embedding-3-small" />
+            <span>记忆 Top K</span>
+            <input name="memory_top_k" type="number" min="1" max="20" />
           </label>
           <label>
             <span>向量维度</span>
-            <input name="memory_embed_dims" type="number" min="64" max="4096" step="1" />
+            <input name="memory_embed_dims" type="number" min="64" max="4096" />
           </label>
-        </div>
-
-        <label>
-          <span>检索条数 Top-K</span>
-          <input name="memory_top_k" type="number" min="1" max="20" step="1" />
-        </label>
-
-        <div class="drawer-actions memory-actions">
-          <button id="btn-list-memory" class="ghost-btn" type="button">查看记忆</button>
-          <button id="btn-clear-memory" class="ghost-btn" type="button">清空记忆</button>
         </div>
 
         <label>
           <span>系统提示词</span>
-          <textarea name="system_prompt" rows="5"></textarea>
+          <textarea name="system_prompt" rows="8"></textarea>
         </label>
 
         <div class="drawer-actions">
           <button id="btn-test" class="ghost-btn" type="button">测试连接</button>
+          <button id="btn-list-memory" class="ghost-btn" type="button">查看记忆</button>
+          <button id="btn-clear-memory" class="ghost-btn" type="button">清空记忆</button>
           <button class="primary-btn" type="submit">保存配置</button>
         </div>
         <p id="settings-status" class="status-line"></p>
