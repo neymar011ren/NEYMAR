@@ -23,7 +23,11 @@ class AgentConfig(BaseModel):
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int = Field(default=4096, ge=1, le=200000)
     system_prompt: str = Field(
-        default="你是一个本地可配置的 AI Agent。你可以调用工具完成任务，回答要简洁、可执行。"
+        default=(
+            "你是一个本地可配置的 AI Agent。你可以调用工具完成任务，回答要简洁、可执行。"
+            "若用户提供 Anthropic Messages 或 OpenAI Responses 格式的请求、或需要把这类协议"
+            "桥接到 Chat Completions，请自主调用 protocol_adapt（单向：仅 → chat_completions）。"
+        )
     )
     enable_tools: bool = True
     enable_web_search: bool = False

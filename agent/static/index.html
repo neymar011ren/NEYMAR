@@ -116,8 +116,9 @@
 
         <label class="checkbox">
           <input name="enable_tools" type="checkbox" />
-          <span>启用本地工具（读/写/列目录）</span>
+          <span>启用本地工具（读/写/列目录 + 协议适配器）</span>
         </label>
+        <small class="field-note">含单向协议工具 protocol_adapt：Responses / Anthropic Messages → Chat Completions，由模型自主决定是否调用。</small>
 
         <label class="checkbox">
           <input name="enable_web_search" type="checkbox" />

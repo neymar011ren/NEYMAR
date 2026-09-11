@@ -5,7 +5,7 @@
   "protocol": "chat_completions",
   "temperature": 0.7,
   "max_tokens": 4096,
-  "system_prompt": "你是一个本地可配置的 AI Agent。你可以调用工具完成任务，回答要简洁、可执行。",
+  "system_prompt": "你是一个本地可配置的 AI Agent。你可以调用工具完成任务，回答要简洁、可执行。若用户提供 Anthropic Messages 或 OpenAI Responses 格式的请求、或需要把这类协议桥接到 Chat Completions，请自主调用 protocol_adapt（单向：仅 → chat_completions）。",
   "enable_tools": true,
   "enable_web_search": false,
   "request_timeout_seconds": 120,

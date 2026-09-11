@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from config_store import AgentConfig
-from tools import TOOL_DEFINITIONS, run_tool
+from tools import LOCAL_TOOL_NAMES, TOOL_DEFINITIONS, run_tool
 
 
 class LLMError(RuntimeError):
@@ -355,7 +355,7 @@ async def run_agent(
         local_tool_calls = [
             call
             for call in tool_calls
-            if (call.get("function", {}) or {}).get("name") in {"list_files", "read_file", "write_file"}
+            if (call.get("function", {}) or {}).get("name") in LOCAL_TOOL_NAMES
         ]
 
         if local_tool_calls and config.enable_tools:

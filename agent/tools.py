@@ -4,7 +4,10 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from protocol_adapter import protocol_adapt
+
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+LOCAL_TOOL_NAMES = {"list_files", "read_file", "write_file", "protocol_adapt"}
 AGENT_DIR = Path(__file__).resolve().parent
 SENSITIVE_DIRS = (
     (AGENT_DIR / "data").resolve(),
@@ -134,6 +137,52 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "protocol_adapt",
+            "description": (
+                "单向协议适配器：把 OpenAI Responses 或 Anthropic Messages 格式的请求"
+                "转换为 Chat Completions，并可调用当前配置的上游 /v1/chat/completions。"
+                "适用场景：用户给了其他协议的请求体、或需要把非 Chat Completions 语义"
+                "桥接到只支持 Chat Completions 的网关。不要用于本身已是 Chat Completions 的请求；"
+                "也不支持反向转换。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_protocol": {
+                        "type": "string",
+                        "enum": ["responses", "anthropic_messages"],
+                        "description": "源协议。仅支持 responses 或 anthropic_messages。",
+                    },
+                    "request": {
+                        "type": "object",
+                        "description": (
+                            "源协议的完整请求体对象。"
+                            "也可把整段 JSON 字符串放进字段 raw_json（若你更方便）；"
+                            "优先传对象。Anthropic 常用：model/system/messages/max_tokens/tools；"
+                            "Responses 常用：model/instructions/input/max_output_tokens/tools。"
+                        ),
+                        "additionalProperties": True,
+                    },
+                    "raw_json": {
+                        "type": "string",
+                        "description": "可选。若不便构造对象，可传源请求的 JSON 字符串；与 request 二选一，优先 request。",
+                    },
+                    "execute": {
+                        "type": "boolean",
+                        "description": (
+                            "true（默认）：转换后立刻用当前配置的 API Key/Base URL 调用 Chat Completions；"
+                            "false：只返回转换后的 Chat Completions 请求体，不发网络请求。"
+                        ),
+                        "default": True,
+                    },
+                },
+                "required": ["source_protocol"],
+            },
+        },
+    },
 ]
 
 
@@ -141,6 +190,11 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "list_files": lambda path=".": list_files(path),
     "read_file": lambda path: read_file(path),
     "write_file": lambda path, content: write_file(path, content),
+    "protocol_adapt": lambda source_protocol, request=None, raw_json=None, execute=True: protocol_adapt(
+        source_protocol,
+        request if request is not None else raw_json,
+        execute=execute,
+    ),
 }
 
 
