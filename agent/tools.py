@@ -5,14 +5,38 @@ from pathlib import Path
 from typing import Any, Callable
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+AGENT_DIR = Path(__file__).resolve().parent
+SENSITIVE_DIRS = (
+    (AGENT_DIR / "data").resolve(),
+)
+SENSITIVE_FILES = {
+    (AGENT_DIR / "data" / "config.json").resolve(),
+}
 MAX_READ_CHARS = 80_000
+
+
+def _is_within(root: Path, candidate: Path) -> bool:
+    try:
+        candidate.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _is_sensitive(path: Path) -> bool:
+    resolved = path.resolve()
+    if resolved in SENSITIVE_FILES:
+        return True
+    return any(_is_within(sensitive_dir, resolved) for sensitive_dir in SENSITIVE_DIRS)
 
 
 def _safe_path(relative: str) -> Path:
     raw = (relative or "").strip() or "."
     candidate = (WORKSPACE_ROOT / raw).resolve()
-    if not str(candidate).startswith(str(WORKSPACE_ROOT)):
+    if not _is_within(WORKSPACE_ROOT, candidate):
         raise ValueError("路径越界：只能访问当前工作区")
+    if _is_sensitive(candidate):
+        raise ValueError("拒绝访问敏感配置文件")
     return candidate
 
 
@@ -24,13 +48,24 @@ def list_files(path: str = ".", max_entries: int = 200) -> str:
         return f"这是文件: {target.relative_to(WORKSPACE_ROOT)}"
     entries = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
     lines: list[str] = []
-    for item in entries[:max_entries]:
+    shown = 0
+    skipped_sensitive = 0
+    for item in entries:
+        if _is_sensitive(item):
+            skipped_sensitive += 1
+            continue
+        if shown >= max_entries:
+            continue
         rel = item.relative_to(WORKSPACE_ROOT).as_posix()
         kind = "dir" if item.is_dir() else "file"
         size = "" if item.is_dir() else f" ({item.stat().st_size} B)"
         lines.append(f"[{kind}] {rel}{size}")
-    if len(entries) > max_entries:
-        lines.append(f"... 还有 {len(entries) - max_entries} 项未显示")
+        shown += 1
+    remaining = max(0, len(entries) - shown - skipped_sensitive)
+    if remaining:
+        lines.append(f"... 还有 {remaining} 项未显示")
+    if skipped_sensitive:
+        lines.append(f"... 已隐藏 {skipped_sensitive} 个敏感配置项")
     return "\n".join(lines) or "(空目录)"
 
 
