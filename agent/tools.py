@@ -5,9 +5,26 @@ from pathlib import Path
 from typing import Any, Callable
 
 from protocol_adapter import protocol_adapt
+from agent_config_tools import (
+    detect_target_agent,
+    list_known_agents,
+    probe_agent_config,
+    test_agent_channel,
+    write_agent_channel_config,
+)
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
-LOCAL_TOOL_NAMES = {"list_files", "read_file", "write_file", "protocol_adapt"}
+LOCAL_TOOL_NAMES = {
+    "list_files",
+    "read_file",
+    "write_file",
+    "protocol_adapt",
+    "list_known_agents",
+    "detect_target_agent",
+    "probe_agent_config",
+    "write_agent_channel_config",
+    "test_agent_channel",
+}
 AGENT_DIR = Path(__file__).resolve().parent
 SENSITIVE_DIRS = (
     (AGENT_DIR / "data").resolve(),
@@ -183,6 +200,103 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_known_agents",
+            "description": "列出判断器支持自动探测/写入的目标 Agent 档案（名称、别名、原生协议、配置路径）。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "detect_target_agent",
+            "description": "根据用户原话判断要把模型 API 配置到哪个 Agent。返回候选 id、分数与原生协议。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_text": {
+                        "type": "string",
+                        "description": "用户输入的原话",
+                    }
+                },
+                "required": ["user_text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "probe_agent_config",
+            "description": "探测本地是否存在该 Agent 的配置文件，并返回脱敏预览。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {
+                        "type": "string",
+                        "description": "如 claude_code / workbuddy / continue / codex / cline / aider / opencode / forge_agent",
+                    }
+                },
+                "required": ["agent_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_agent_channel_config",
+            "description": (
+                "把用户提供的 Base URL / 模型 / API Key 写入目标 Agent 的本地渠道配置。"
+                "写入前会尝试 backup。必须等用户明确提供密钥后再调用。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "base_url": {"type": "string", "description": "模型渠道 Base URL，通常到 /v1"},
+                    "model": {"type": "string", "description": "模型名称/ID"},
+                    "api_key": {"type": "string", "description": "用户自行提供的密钥"},
+                    "protocol": {
+                        "type": "string",
+                        "enum": ["chat_completions", "responses", "anthropic_messages"],
+                        "description": "仅 forge_agent 可用来设置协议；其他 Agent 可忽略",
+                    },
+                    "create_if_missing": {
+                        "type": "boolean",
+                        "description": "本地无配置文件时是否创建，默认 true",
+                        "default": True,
+                    },
+                },
+                "required": ["agent_id", "base_url", "model", "api_key"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "test_agent_channel",
+            "description": (
+                "验证协议转换与渠道是否可用：按 Agent 原生协议构造探测请求，"
+                "必要时转换为 Chat Completions，再用用户提供的 Base URL/Key/模型发起真实 HTTP 探测。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "base_url": {"type": "string"},
+                    "model": {"type": "string"},
+                    "api_key": {"type": "string"},
+                    "source_protocol": {
+                        "type": "string",
+                        "enum": ["chat_completions", "responses", "anthropic_messages"],
+                        "description": "覆盖档案中的原生协议；默认用档案值",
+                    },
+                },
+                "required": ["agent_id", "base_url", "model", "api_key"],
+            },
+        },
+    },
 ]
 
 
@@ -194,6 +308,24 @@ HANDLERS: dict[str, Callable[..., str]] = {
         source_protocol,
         request if request is not None else raw_json,
         execute=execute,
+    ),
+    "list_known_agents": lambda: list_known_agents(),
+    "detect_target_agent": lambda user_text: detect_target_agent(user_text),
+    "probe_agent_config": lambda agent_id: probe_agent_config(agent_id),
+    "write_agent_channel_config": lambda agent_id, base_url, model, api_key, protocol=None, create_if_missing=True: write_agent_channel_config(
+        agent_id,
+        base_url,
+        model,
+        api_key,
+        protocol=protocol,
+        create_if_missing=create_if_missing,
+    ),
+    "test_agent_channel": lambda agent_id, base_url, model, api_key, source_protocol=None: test_agent_channel(
+        agent_id,
+        base_url,
+        model,
+        api_key,
+        source_protocol=source_protocol,
     ),
 }
 

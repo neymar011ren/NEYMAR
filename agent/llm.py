@@ -299,7 +299,7 @@ async def run_agent(
     config: AgentConfig,
     user_message: str,
     history: list[dict[str, Any]] | None = None,
-    max_rounds: int = 8,
+    max_rounds: int = 12,
 ) -> AsyncIterator[dict[str, Any]]:
     import asyncio
 

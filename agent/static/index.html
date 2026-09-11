@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Forge Agent · 可配置本地 Agent</title>
+  <title>Judger Agent · 配置判断器</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -16,8 +16,8 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"></div>
         <div>
-          <p class="eyebrow">Local Configurable Agent</p>
-          <h1>Forge Agent</h1>
+          <p class="eyebrow">Intent → Protocol → Config</p>
+          <h1>Judger Agent</h1>
         </div>
       </div>
       <div class="top-actions">
@@ -28,9 +28,9 @@
 
     <main class="layout">
       <section class="hero-panel">
-        <p class="kicker">你的模型 · 你的 Agent</p>
-        <h2>底层直接调用你提供的模型 API，配置可随时在可视化面板里改。</h2>
-        <p class="lede">支持 Chat Completions / Responses / Anthropic Messages。改完保存即可，无需手改 JSON。</p>
+        <p class="kicker">判断器 · 渠道配置流水线</p>
+        <h2>把你的模型 API 配进目标对话 Agent：识别意图、查协议、转换、写入、测试。</h2>
+        <p class="lede">输入一句话即可。保留联网搜索与协议转换工具；判断器会引导你提供 Base URL、模型名与 Key。</p>
         <div class="meta-row">
           <div>
             <span class="meta-label">当前模型</span>
@@ -50,7 +50,7 @@
       <section class="chat-panel">
         <div id="chat-log" class="chat-log" aria-live="polite"></div>
         <form id="chat-form" class="composer">
-          <textarea id="chat-input" rows="3" placeholder="输入任务，例如：列出工作区文件，并总结 README"></textarea>
+          <textarea id="chat-input" rows="3" placeholder="例如：我想把金山云模型配到 Claude Code / WorkBuddy"></textarea>
           <div class="composer-actions">
             <button id="btn-clear" class="ghost-btn" type="button">清空对话</button>
             <button id="btn-send" class="primary-btn" type="submit">发送</button>
@@ -116,9 +116,9 @@
 
         <label class="checkbox">
           <input name="enable_tools" type="checkbox" />
-          <span>启用本地工具（读/写/列目录 + 协议适配器）</span>
+          <span>启用本地工具（判断器工具集 + 文件 + 协议适配）</span>
         </label>
-        <small class="field-note">含单向协议工具 protocol_adapt：Responses / Anthropic Messages → Chat Completions，由模型自主决定是否调用。</small>
+        <small class="field-note">含 detect / probe / write / test_agent_channel 与 protocol_adapt；模型按判断器流水线自主调用。</small>
 
         <label class="checkbox">
           <input name="enable_web_search" type="checkbox" />
