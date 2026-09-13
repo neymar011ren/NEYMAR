@@ -679,7 +679,7 @@ async def run_agent(
                             preview = json.loads(result)
                         except json.JSONDecodeError:
                             preview = None
-                        if isinstance(preview, dict) and preview.get("ok") and (preview.get("confirm_required") or preview.get("confirm_required")):
+                        if isinstance(preview, dict) and preview.get("ok") and preview.get("confirm_required"):
                             # 真正的 api_key 不从工具返回值里取（那里只有脱敏值，会话记录/
                             # 调试面板都不该看到明文），而是直接读模型这次调用时传入的原始参数——
                             # 这些参数本来就来自用户在对话里输入的内容，没有引入新的暴露面。
