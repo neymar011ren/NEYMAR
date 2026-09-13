@@ -406,6 +406,9 @@ HANDLERS: dict[str, Callable[..., str]] = {
 
 
 def run_tool(name: str, arguments: dict[str, Any] | str | None) -> str:
+    """执行本地工具；渠道流水线门禁与状态推进在这里统一处理。"""
+    from pipeline import apply_tool_result, get_state, guard_tool
+
     if name not in HANDLERS:
         return f"未知工具: {name}"
     if isinstance(arguments, str):
@@ -414,9 +417,18 @@ def run_tool(name: str, arguments: dict[str, Any] | str | None) -> str:
         except json.JSONDecodeError:
             return f"工具参数不是合法 JSON: {arguments}"
     arguments = arguments or {}
+
+    state = get_state()
+    rejected = guard_tool(name, arguments, state)
+    if rejected is not None:
+        return json.dumps(rejected, ensure_ascii=False, indent=2)
+
     try:
-        return HANDLERS[name](**arguments)
+        result = HANDLERS[name](**arguments)
     except TypeError as exc:
         return f"工具参数错误: {exc}"
     except Exception as exc:  # noqa: BLE001
         return f"工具执行失败: {exc}"
+
+    apply_tool_result(name, arguments, result if isinstance(result, str) else json.dumps(result, ensure_ascii=False))
+    return result

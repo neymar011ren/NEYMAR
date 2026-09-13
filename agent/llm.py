@@ -10,6 +10,27 @@ from config_store import AgentConfig
 from tools import LOCAL_TOOL_NAMES, TOOL_DEFINITIONS, run_tool
 
 
+_PIPELINE_PROGRESS_PREFIX = "【渠道配置流水线"
+
+
+def _upsert_pipeline_progress(messages: list[dict[str, Any]], state) -> None:
+    """把流水线进度写成独立 system 消息，每轮覆盖，避免模型靠聊天记录猜进度。"""
+    from pipeline import format_progress
+
+    content = format_progress(state)
+    for idx, msg in enumerate(messages):
+        if (
+            msg.get("role") == "system"
+            and isinstance(msg.get("content"), str)
+            and msg["content"].startswith(_PIPELINE_PROGRESS_PREFIX)
+        ):
+            messages[idx] = {"role": "system", "content": content}
+            return
+    insert_at = 1 if messages and messages[0].get("role") == "system" else 0
+    messages.insert(insert_at, {"role": "system", "content": content})
+
+
+
 class LLMError(RuntimeError):
     pass
 
@@ -534,231 +555,241 @@ async def run_agent(
     turn_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0, "total_tokens": 0}
     turn_tool_calls: list[str] = []
 
-    if config.enable_memory and config.api_key:
-        yield {"type": "phase", "phase": "memory", "message": "检索长期记忆…"}
-        try:
-            recalled = await asyncio.to_thread(search_memories, config, user_message)
-            block = format_memory_block(recalled)
-            if block:
-                system_prompt = f"{config.system_prompt}\n\n{block}"
+    from pipeline import bind_session, get_state, reset_session
+
+    session_token = bind_session(session_id)
+    try:
+        if config.enable_memory and config.api_key:
+            yield {"type": "phase", "phase": "memory", "message": "检索长期记忆…"}
+            try:
+                recalled = await asyncio.to_thread(search_memories, config, user_message)
+                block = format_memory_block(recalled)
+                if block:
+                    system_prompt = f"{config.system_prompt}\n\n{block}"
+                    yield {
+                        "type": "memory",
+                        "action": "recall",
+                        "count": len(recalled),
+                        "items": recalled,
+                    }
+                else:
+                    yield {"type": "phase", "phase": "memory", "message": "暂无相关记忆"}
+            except Exception as exc:  # noqa: BLE001
                 yield {
                     "type": "memory",
-                    "action": "recall",
-                    "count": len(recalled),
-                    "items": recalled,
+                    "action": "recall_error",
+                    "message": f"记忆检索失败（已跳过）：{exc}",
                 }
-            else:
-                yield {"type": "phase", "phase": "memory", "message": "暂无相关记忆"}
-        except Exception as exc:  # noqa: BLE001
-            yield {
-                "type": "memory",
-                "action": "recall_error",
-                "message": f"记忆检索失败（已跳过）：{exc}",
-            }
 
-    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-    if history:
-        for item in history:
-            role = item.get("role")
-            content = item.get("content")
-            if role in {"user", "assistant"} and content:
-                messages.append({"role": role, "content": content})
-    messages.append({"role": "user", "content": user_message})
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        if history:
+            for item in history:
+                role = item.get("role")
+                content = item.get("content")
+                if role in {"user", "assistant"} and content:
+                    messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": user_message})
 
-    yield {"type": "phase", "phase": "think", "message": "开始处理…"}
+        yield {"type": "phase", "phase": "think", "message": "开始处理…"}
 
-    for round_idx in range(max_rounds):
-        yield {
-            "type": "phase",
-            "phase": "think",
-            "message": f"调用模型（第 {round_idx + 1} 轮）…",
-        }
-        assistant: dict[str, Any] | None = None
-        saw_delta = False
-        async for event in iter_model_events(config, messages):
-            if event.get("type") == "delta":
-                piece = event.get("content") or ""
-                if piece:
-                    saw_delta = True
-                    yield {"type": "delta", "content": piece}
-            elif event.get("type") == "message":
-                assistant = event["message"]
-        if assistant is None:
-            raise LLMError("模型未返回消息")
-
-        tool_calls = assistant.get("tool_calls") or []
-        content = assistant.get("content")
-        web_search_queries = assistant.pop("_web_search_queries", None)
-        round_usage = assistant.pop("_usage", None)
-        if isinstance(round_usage, dict):
-            accumulate_usage(turn_usage, round_usage)
-        if web_search_queries is not None:
+        for round_idx in range(max_rounds):
             yield {
                 "type": "phase",
                 "phase": "think",
-                "message": f"联网搜索次数：{web_search_queries}",
+                "message": f"调用模型（第 {round_idx + 1} 轮）…",
+            }
+            assistant: dict[str, Any] | None = None
+            saw_delta = False
+            _upsert_pipeline_progress(messages, get_state(session_id))
+            yield {"type": "pipeline", "state": get_state(session_id).to_public_dict()}
+            async for event in iter_model_events(config, messages):
+                if event.get("type") == "delta":
+                    piece = event.get("content") or ""
+                    if piece:
+                        saw_delta = True
+                        yield {"type": "delta", "content": piece}
+                elif event.get("type") == "message":
+                    assistant = event["message"]
+            if assistant is None:
+                raise LLMError("模型未返回消息")
+
+            tool_calls = assistant.get("tool_calls") or []
+            content = assistant.get("content")
+            web_search_queries = assistant.pop("_web_search_queries", None)
+            round_usage = assistant.pop("_usage", None)
+            if isinstance(round_usage, dict):
+                accumulate_usage(turn_usage, round_usage)
+            if web_search_queries is not None:
+                yield {
+                    "type": "phase",
+                    "phase": "think",
+                    "message": f"联网搜索次数：{web_search_queries}",
+                }
+
+            local_tool_calls = [
+                call
+                for call in tool_calls
+                if (call.get("function", {}) or {}).get("name") in LOCAL_TOOL_NAMES
+            ]
+
+            if local_tool_calls and config.enable_tools:
+                if saw_delta:
+                    yield {"type": "round_reset", "reason": "tool_calls"}
+                messages.append(assistant)
+                for call in local_tool_calls:
+                    name = call.get("function", {}).get("name") or ""
+                    raw_args = call.get("function", {}).get("arguments") or "{}"
+                    turn_tool_calls.append(name)
+                    yield {
+                        "type": "tool_call",
+                        "name": name,
+                        "arguments": raw_args,
+                    }
+                    # 工具里有会阻塞的同步 I/O（比如 test_agent_channel 的 httpx.Client 请求、
+                    # 文件读写），放线程池里跑，避免卡住整个事件循环，影响其它并发请求。
+                    result = await asyncio.to_thread(run_tool, name, raw_args)
+                    yield {
+                        "type": "tool_result",
+                        "name": name,
+                        "result": result[:4000],
+                    }
+                    if name == "prepare_agent_install":
+                        try:
+                            offer = json.loads(result)
+                        except json.JSONDecodeError:
+                            offer = None
+                        if isinstance(offer, dict) and offer.get("offer_install"):
+                            yield {
+                                "type": "install_offer",
+                                "agent_id": offer.get("agent_id"),
+                                "name": offer.get("name"),
+                                "button_label": offer.get("button_label") or f"安装 {offer.get('name')}",
+                                "os": offer.get("os"),
+                                "package_name": offer.get("package_name"),
+                                "auto_installable": bool(offer.get("auto_installable")),
+                                "commands": offer.get("commands") or [],
+                                "docs_url": offer.get("docs_url") or "",
+                                "download_url": offer.get("download_url") or "",
+                                "notes": offer.get("notes") or "",
+                                "search_notes": offer.get("search_notes") or "",
+                                "manual_hint": offer.get("manual_hint"),
+                            }
+                    if name == "write_agent_channel_config":
+                        try:
+                            preview = json.loads(result)
+                        except json.JSONDecodeError:
+                            preview = None
+                        if isinstance(preview, dict) and preview.get("ok") and (preview.get("confirm_required") or preview.get("confirm_required")):
+                            # 真正的 api_key 不从工具返回值里取（那里只有脱敏值，会话记录/
+                            # 调试面板都不该看到明文），而是直接读模型这次调用时传入的原始参数——
+                            # 这些参数本来就来自用户在对话里输入的内容，没有引入新的暴露面。
+                            try:
+                                call_args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+                            except json.JSONDecodeError:
+                                call_args = {}
+                            yield {
+                                "type": "write_offer",
+                                "agent_id": preview.get("agent_id"),
+                                "name": preview.get("name"),
+                                "target_path": preview.get("target_path"),
+                                "file_exists": preview.get("file_exists"),
+                                "will_create_new_file": preview.get("will_create_new_file"),
+                                "native_protocol": preview.get("native_protocol"),
+                                "api_key_masked": preview.get("api_key_masked"),
+                                "message": preview.get("message"),
+                                "params": {
+                                    "agent_id": call_args.get("agent_id") or preview.get("agent_id"),
+                                    "base_url": call_args.get("base_url"),
+                                    "model": call_args.get("model"),
+                                    "api_key": call_args.get("api_key"),
+                                    "protocol": call_args.get("protocol"),
+                                    "create_if_missing": call_args.get("create_if_missing", True),
+                                },
+                            }
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.get("id"),
+                            "content": result,
+                        }
+                    )
+                yield {"type": "pipeline", "state": get_state(session_id).to_public_dict()}
+                continue
+
+            final_text = content or ""
+            # 非流式协议可能只伪流式推过 delta；若完全没推过则补一次
+            if not saw_delta and final_text:
+                yield {"type": "phase", "phase": "answer", "message": "生成回复…"}
+                step = 32
+                for i in range(0, len(final_text), step):
+                    yield {"type": "delta", "content": final_text[i : i + step]}
+            body, refs = _split_answer_and_refs(final_text)
+            yield {
+                "type": "final",
+                "content": body,
+                "raw": final_text,
+                "references": refs,
+                "usage": turn_usage,
+                "tool_calls": turn_tool_calls,
             }
 
-        local_tool_calls = [
-            call
-            for call in tool_calls
-            if (call.get("function", {}) or {}).get("name") in LOCAL_TOOL_NAMES
-        ]
-
-        if local_tool_calls and config.enable_tools:
-            if saw_delta:
-                yield {"type": "round_reset", "reason": "tool_calls"}
-            messages.append(assistant)
-            for call in local_tool_calls:
-                name = call.get("function", {}).get("name") or ""
-                raw_args = call.get("function", {}).get("arguments") or "{}"
-                turn_tool_calls.append(name)
-                yield {
-                    "type": "tool_call",
-                    "name": name,
-                    "arguments": raw_args,
-                }
-                # 工具里有会阻塞的同步 I/O（比如 test_agent_channel 的 httpx.Client 请求、
-                # 文件读写），放线程池里跑，避免卡住整个事件循环，影响其它并发请求。
-                result = await asyncio.to_thread(run_tool, name, raw_args)
-                yield {
-                    "type": "tool_result",
-                    "name": name,
-                    "result": result[:4000],
-                }
-                if name == "prepare_agent_install":
-                    try:
-                        offer = json.loads(result)
-                    except json.JSONDecodeError:
-                        offer = None
-                    if isinstance(offer, dict) and offer.get("offer_install"):
-                        yield {
-                            "type": "install_offer",
-                            "agent_id": offer.get("agent_id"),
-                            "name": offer.get("name"),
-                            "button_label": offer.get("button_label") or f"安装 {offer.get('name')}",
-                            "os": offer.get("os"),
-                            "package_name": offer.get("package_name"),
-                            "auto_installable": bool(offer.get("auto_installable")),
-                            "commands": offer.get("commands") or [],
-                            "docs_url": offer.get("docs_url") or "",
-                            "download_url": offer.get("download_url") or "",
-                            "notes": offer.get("notes") or "",
-                            "search_notes": offer.get("search_notes") or "",
-                            "manual_hint": offer.get("manual_hint"),
-                        }
-                if name == "write_agent_channel_config":
-                    try:
-                        preview = json.loads(result)
-                    except json.JSONDecodeError:
-                        preview = None
-                    if isinstance(preview, dict) and preview.get("ok") and preview.get("confirm_required"):
-                        # 真正的 api_key 不从工具返回值里取（那里只有脱敏值，会话记录/
-                        # 调试面板都不该看到明文），而是直接读模型这次调用时传入的原始参数——
-                        # 这些参数本来就来自用户在对话里输入的内容，没有引入新的暴露面。
-                        try:
-                            call_args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-                        except json.JSONDecodeError:
-                            call_args = {}
-                        yield {
-                            "type": "write_offer",
-                            "agent_id": preview.get("agent_id"),
-                            "name": preview.get("name"),
-                            "target_path": preview.get("target_path"),
-                            "file_exists": preview.get("file_exists"),
-                            "will_create_new_file": preview.get("will_create_new_file"),
-                            "native_protocol": preview.get("native_protocol"),
-                            "api_key_masked": preview.get("api_key_masked"),
-                            "message": preview.get("message"),
-                            "params": {
-                                "agent_id": call_args.get("agent_id") or preview.get("agent_id"),
-                                "base_url": call_args.get("base_url"),
-                                "model": call_args.get("model"),
-                                "api_key": call_args.get("api_key"),
-                                "protocol": call_args.get("protocol"),
-                                "create_if_missing": call_args.get("create_if_missing", True),
-                            },
-                        }
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call.get("id"),
-                        "content": result,
+            # 短期记忆：不论是否启用长期记忆都落盘，因为它是"这轮到底花了多少 token"的
+            # 唯一真实来源，关掉长期记忆不该连用量统计一起丢掉。
+            if session_id and final_text.strip():
+                try:
+                    await asyncio.to_thread(
+                        record_session_turn,
+                        config,
+                        session_id,
+                        user_message,
+                        final_text,
+                        turn_usage,
+                        turn_tool_calls,
+                        round_idx + 1,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    yield {
+                        "type": "memory",
+                        "action": "session_write_error",
+                        "message": f"会话记录写入失败（不影响本次回答）：{exc}",
                     }
-                )
-            continue
 
-        final_text = content or ""
-        # 非流式协议可能只伪流式推过 delta；若完全没推过则补一次
-        if not saw_delta and final_text:
-            yield {"type": "phase", "phase": "answer", "message": "生成回复…"}
-            step = 32
-            for i in range(0, len(final_text), step):
-                yield {"type": "delta", "content": final_text[i : i + step]}
-        body, refs = _split_answer_and_refs(final_text)
+            if config.enable_memory and config.api_key and final_text.strip():
+                yield {"type": "phase", "phase": "memory", "message": "写入长期记忆…"}
+                try:
+                    result = await asyncio.to_thread(
+                        add_memory,
+                        config,
+                        [
+                            {"role": "user", "content": user_message},
+                            {"role": "assistant", "content": final_text},
+                        ],
+                        session_id,
+                    )
+                    yield {
+                        "type": "memory",
+                        "action": "write",
+                        "ok": True,
+                        "backend": (result or {}).get("backend", "local"),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    yield {
+                        "type": "memory",
+                        "action": "write_error",
+                        "message": f"记忆写入失败（不影响本次回答）：{exc}",
+                    }
+            return
+
         yield {
             "type": "final",
-            "content": body,
-            "raw": final_text,
-            "references": refs,
-            "usage": turn_usage,
-            "tool_calls": turn_tool_calls,
+            "content": "已达到最大工具循环次数，请拆分任务后重试。",
+            "raw": "",
+            "references": [],
         }
 
-        # 短期记忆：不论是否启用长期记忆都落盘，因为它是"这轮到底花了多少 token"的
-        # 唯一真实来源，关掉长期记忆不该连用量统计一起丢掉。
-        if session_id and final_text.strip():
-            try:
-                await asyncio.to_thread(
-                    record_session_turn,
-                    config,
-                    session_id,
-                    user_message,
-                    final_text,
-                    turn_usage,
-                    turn_tool_calls,
-                    round_idx + 1,
-                )
-            except Exception as exc:  # noqa: BLE001
-                yield {
-                    "type": "memory",
-                    "action": "session_write_error",
-                    "message": f"会话记录写入失败（不影响本次回答）：{exc}",
-                }
 
-        if config.enable_memory and config.api_key and final_text.strip():
-            yield {"type": "phase", "phase": "memory", "message": "写入长期记忆…"}
-            try:
-                result = await asyncio.to_thread(
-                    add_memory,
-                    config,
-                    [
-                        {"role": "user", "content": user_message},
-                        {"role": "assistant", "content": final_text},
-                    ],
-                    session_id,
-                )
-                yield {
-                    "type": "memory",
-                    "action": "write",
-                    "ok": True,
-                    "backend": (result or {}).get("backend", "local"),
-                }
-            except Exception as exc:  # noqa: BLE001
-                yield {
-                    "type": "memory",
-                    "action": "write_error",
-                    "message": f"记忆写入失败（不影响本次回答）：{exc}",
-                }
-        return
-
-    yield {
-        "type": "final",
-        "content": "已达到最大工具循环次数，请拆分任务后重试。",
-        "raw": "",
-        "references": [],
-    }
-
+    finally:
+        reset_session(session_token)
 
 async def probe_connection(config: AgentConfig) -> dict[str, Any]:
     probe_messages = [

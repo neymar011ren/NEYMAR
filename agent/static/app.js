@@ -449,7 +449,10 @@ function appendInstallOffer(turn, offer) {
         const res = await fetch("/api/agents/install", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agent_id: offer.agent_id }),
+          body: JSON.stringify({
+            agent_id: offer.agent_id,
+            session_id: state.sessionId,
+          }),
         });
         if (!res.ok || !res.body) throw new Error(`安装请求失败 HTTP ${res.status}`);
         const reader = res.body.getReader();
@@ -538,7 +541,7 @@ function appendWriteOffer(turn, offer) {
       const res = await fetch("/api/agents/write-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params),
+        body: JSON.stringify({ ...params, session_id: state.sessionId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -891,6 +894,10 @@ async function sendMessage(event) {
           appendInstallOffer(turn, payload);
         } else if (payload.type === "write_offer") {
           appendWriteOffer(turn, payload);
+        } else if (payload.type === "pipeline") {
+          state.pipeline = payload.state || null;
+          const text = payload.state?.progress_text;
+          if (text) appendThink(turn, text.split("\n")[0] || text);
         } else if (payload.type === "memory") {
           if (payload.action === "recall" && payload.items?.length) {
             const lines = payload.items.map((item, i) => `${i + 1}. ${item.memory}`).join("\n");

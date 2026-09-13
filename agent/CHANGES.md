@@ -16,7 +16,7 @@ python run.py
 
 ```bash
 pip install -r requirements-dev.txt
-pytest          # 123 个用例
+pytest          # 127 个用例
 ```
 
 ## 安全修复
@@ -62,3 +62,10 @@ pytest          # 123 个用例
   因为探测本机 / 内网自建网关是合法用法，加黑名单会误伤。
 - 模型若幻觉出未注册的工具名，该 `tool_call` 不会有对应应答，可能导致下一轮被上游拒绝。
 - 未加 CSRF / Origin 校验；写入的配置文件未设 `chmod 600`。
+
+## 流水线状态机（代码强制）
+
+- 新增 `pipeline.py`：`ChannelSetupState` + 工具门禁 + 进度文案
+- `run_tool` / `write_agent_channel_config` 在 `target_agent` 未锁定时直接拒绝写入预览
+- `run_agent` 每轮注入进度 system 消息；写入确认 / 安装完成会推进 `written` / `install_status`
+- `judger_prompt.py` 精简为角色与决策原则，8 步细节不再只靠提示词约束

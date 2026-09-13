@@ -61,6 +61,7 @@ class ChatRequest(BaseModel):
 
 class InstallRequest(BaseModel):
     agent_id: str = Field(min_length=1)
+    session_id: str | None = None
 
 
 class WriteChannelRequest(BaseModel):
@@ -70,6 +71,7 @@ class WriteChannelRequest(BaseModel):
     api_key: str = Field(min_length=1)
     protocol: str | None = None
     create_if_missing: bool = True
+    session_id: str | None = None
 
 
 @app.get("/")
@@ -97,7 +99,11 @@ async def install_agent(req: InstallRequest) -> StreamingResponse:
 
     async def event_stream():
         try:
+            from pipeline import mark_installed
+
             for event in run_agent_install(agent_id):
+                if isinstance(event, dict) and event.get("type") == "done" and event.get("ok"):
+                    mark_installed(agent_id, session_id=getattr(req, "session_id", None))
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:  # noqa: BLE001
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
@@ -125,6 +131,15 @@ async def write_agent_config(req: WriteChannelRequest) -> dict[str, Any]:
     )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error") or "写入失败")
+    from pipeline import mark_written
+
+    state = mark_written(
+        req.agent_id.strip(),
+        session_id=req.session_id,
+        base_url=req.base_url,
+        model=req.model,
+    )
+    result = {**result, "pipeline": state.to_public_dict()}
     return result
 
 

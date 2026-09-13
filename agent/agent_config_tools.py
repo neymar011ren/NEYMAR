@@ -436,6 +436,32 @@ def write_agent_channel_config(
     「确认写入」按钮、触发 /api/agents/write-config 之后才会发生——
     模型自己无法跳过这一步直接改动户真实的 Agent 配置文件。
     """
+    # 仅在 Agent 会话绑定后强制状态机门禁；单测直接调工具时不拦截参数校验本身。
+    try:
+        from pipeline import current_session_id, get_state
+
+        _sid = current_session_id()
+        if _sid:
+            _state = get_state(_sid)
+            if _state.target_agent is None:
+                return _json(
+                    {
+                        "ok": False,
+                        "rejected_by_pipeline": True,
+                        "error": "target_agent 未确定，拒绝写入预览。请先 detect_target_agent 并确认唯一目标。",
+                    }
+                )
+            if agent_id and _state.target_agent and agent_id != _state.target_agent:
+                return _json(
+                    {
+                        "ok": False,
+                        "rejected_by_pipeline": True,
+                        "error": f"目标 Agent 已锁定为 {_state.target_agent}，与参数 agent_id={agent_id} 不一致。",
+                    }
+                )
+    except Exception:
+        pass
+
     profile, target, will_create, error = _resolve_write_target(
         agent_id, base_url, model, api_key, create_if_missing
     )
