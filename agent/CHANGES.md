@@ -69,3 +69,13 @@ pytest          # 127 个用例
 - `run_tool` / `write_agent_channel_config` 在 `target_agent` 未锁定时直接拒绝写入预览
 - `run_agent` 每轮注入进度 system 消息；写入确认 / 安装完成会推进 `written` / `install_status`
 - `judger_prompt.py` 精简为角色与决策原则，8 步细节不再只靠提示词约束
+
+## 前端体验优化（流水线可见化）
+
+- 常驻「渠道配置进度」8 步指示条，消费 `pipeline` SSE / 写入·安装回写
+- 写入确认卡展示 Base URL / 模型 / 协议 / 路径，支持取消
+- 安装成功、写入成功后提供「继续配置 / 继续测试」快捷发送
+- 发送中可「停止」（AbortController）；输入框不再整框锁死
+- 未配置 API Key 时硬引导；示例 chips 降低冷启动成本
+- 巡检结果行可点击发起对应配置意图
+- Esc 关闭设置/记忆抽屉；清空对话提示新会话 + 进度重置

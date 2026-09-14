@@ -32,11 +32,27 @@
 
     <main class="chat-shell">
       <section class="chat-panel">
+        <section id="pipeline-rail" class="pipeline-rail" hidden>
+          <div class="pipeline-rail-head">
+            <div>
+              <p class="pipeline-kicker">渠道配置进度</p>
+              <p id="pipeline-summary" class="pipeline-summary">尚未开始</p>
+            </div>
+            <span id="pipeline-target" class="pipeline-target"></span>
+          </div>
+          <ol id="pipeline-steps" class="pipeline-steps" aria-label="流水线步骤"></ol>
+        </section>
         <div id="chat-log" class="chat-log" aria-live="polite"></div>
         <form id="chat-form" class="composer">
+          <div id="composer-examples" class="composer-examples" aria-label="示例提问">
+            <button type="button" class="example-chip" data-example="把模型配置到 WorkBuddy">配置到 WorkBuddy</button>
+            <button type="button" class="example-chip" data-example="巡检本机已安装的 Agent">巡检本机 Agent</button>
+            <button type="button" class="example-chip" data-example="列出可以配置渠道的 Agent">列出可配置 Agent</button>
+          </div>
           <div class="composer-box">
             <textarea id="chat-input" rows="1" placeholder="把模型配到哪个 Agent？例如：配置金山云到 WorkBuddy"></textarea>
             <div class="composer-actions">
+              <button id="btn-stop" class="ghost-btn stop-btn" type="button" hidden>停止</button>
               <button id="btn-send" class="primary-btn" type="submit">发送</button>
             </div>
           </div>

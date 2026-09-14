@@ -103,7 +103,8 @@ async def install_agent(req: InstallRequest) -> StreamingResponse:
 
             for event in run_agent_install(agent_id):
                 if isinstance(event, dict) and event.get("type") == "done" and event.get("ok"):
-                    mark_installed(agent_id, session_id=getattr(req, "session_id", None))
+                    pipe = mark_installed(agent_id, session_id=getattr(req, "session_id", None))
+                    event = {**event, "pipeline": pipe.to_public_dict()}
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:  # noqa: BLE001
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"

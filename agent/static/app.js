@@ -7,6 +7,8 @@ const state = {
   config: null,
   history: [],
   busy: false,
+  pipeline: null,
+  abortController: null,
   // 会话 ID 在浏览器这边生成并持久化，刷新页面仍算同一个会话；
   // 点「清空对话」才开新会话。后端据此把逐轮记录归组。
   sessionId: localStorage.getItem("kingswitch_session_id") || newSessionId(),
@@ -35,6 +37,12 @@ const els = {
   memLongList: document.getElementById("mem-long-list"),
   memShortList: document.getElementById("mem-short-list"),
   memoryStatus: document.getElementById("memory-status"),
+  pipelineRail: document.getElementById("pipeline-rail"),
+  pipelineSteps: document.getElementById("pipeline-steps"),
+  pipelineSummary: document.getElementById("pipeline-summary"),
+  pipelineTarget: document.getElementById("pipeline-target"),
+  composerExamples: document.getElementById("composer-examples"),
+  btnStop: document.getElementById("btn-stop"),
 };
 
 const PROTOCOL_LABEL = {
@@ -42,6 +50,132 @@ const PROTOCOL_LABEL = {
   responses: "Responses",
   anthropic_messages: "Anthropic Messages",
 };
+
+const PIPELINE_STEPS = [
+  { id: 1, short: "意图", label: "意图识别（确定目标 Agent）" },
+  { id: 2, short: "协议", label: "协议调研" },
+  { id: 3, short: "安装", label: "安装检测" },
+  { id: 4, short: "转换", label: "协议转换准备" },
+  { id: 5, short: "探测", label: "本地配置探测" },
+  { id: 6, short: "凭证", label: "索取 Base URL / 模型 / API Key" },
+  { id: 7, short: "写入", label: "写入渠道配置（预览 → 用户确认）" },
+  { id: 8, short: "测试", label: "测试验证" },
+];
+
+const NEXT_STEP_HINTS = {
+  1: "下一步：告诉我要配置到哪个 Agent",
+  2: "下一步：确认目标 Agent 的原生协议",
+  3: "下一步：检查 Agent 是否已安装",
+  4: "下一步：准备协议转换",
+  5: "下一步：探测本地已有配置",
+  6: "下一步：提供 Base URL / 模型 / API Key",
+  7: "下一步：预览并确认写入渠道配置",
+  8: "下一步：测试渠道是否可用",
+};
+
+function pipelineStepLabel(step) {
+  const found = PIPELINE_STEPS.find((item) => item.id === step);
+  return found ? found.label : `步骤 ${step}`;
+}
+
+function updatePipelineRail(pipeline) {
+  state.pipeline = pipeline || null;
+  if (!els.pipelineRail) return;
+  if (!pipeline) {
+    els.pipelineRail.hidden = true;
+    return;
+  }
+  els.pipelineRail.hidden = false;
+  const completed = Array.isArray(pipeline.completed_steps) ? pipeline.completed_steps : [];
+  const nextStep = pipeline.next_step || null;
+  const doneCount = completed.length;
+  if (els.pipelineSummary) {
+    if (!nextStep && doneCount >= 8) {
+      els.pipelineSummary.textContent = "流水线已完成：渠道配置与验证结束";
+    } else if (nextStep) {
+      els.pipelineSummary.textContent = `已完成 ${doneCount}/8 · ${NEXT_STEP_HINTS[nextStep] || pipelineStepLabel(nextStep)}`;
+    } else {
+      els.pipelineSummary.textContent = `已完成 ${doneCount}/8`;
+    }
+  }
+  if (els.pipelineTarget) {
+    const name = pipeline.target_agent_name || pipeline.target_agent;
+    els.pipelineTarget.textContent = name ? `目标：${name}` : "";
+    els.pipelineTarget.hidden = !name;
+  }
+  if (els.pipelineSteps) {
+    els.pipelineSteps.innerHTML = PIPELINE_STEPS.map((step) => {
+      let cls = "pipeline-step is-todo";
+      if (completed.includes(step.id)) cls = "pipeline-step is-done";
+      else if (nextStep === step.id) cls = "pipeline-step is-current";
+      return `<li class="${cls}" title="${escapeHtml(step.label)}"><span class="pipeline-step-num">${step.id}</span><span class="pipeline-step-label">${escapeHtml(step.short)}</span></li>`;
+    }).join("");
+  }
+}
+
+function ensureSetupGate() {
+  let gate = document.getElementById("setup-gate");
+  if (!gate) {
+    gate = document.createElement("div");
+    gate.id = "setup-gate";
+    gate.className = "setup-gate";
+    gate.hidden = true;
+    gate.innerHTML = `
+      <p>尚未配置上游模型 API Key。请先打开「模型配置」填入 Base URL / Key / 模型，否则无法对话。</p>
+      <button type="button" class="primary-btn" id="btn-setup-gate">去配置</button>
+    `;
+    const panel = document.querySelector(".chat-panel");
+    const chatLog = els.chatLog;
+    if (panel && chatLog) panel.insertBefore(gate, chatLog);
+    gate.querySelector("#btn-setup-gate").addEventListener("click", () => openSettings());
+  }
+  return gate;
+}
+
+function refreshSetupGate(config = state.config) {
+  const gate = ensureSetupGate();
+  const ready = !!(config && config.api_key_set);
+  gate.hidden = ready;
+  if (els.composerExamples) els.composerExamples.hidden = !ready ? false : els.composerExamples.hidden;
+  if (!ready) {
+    els.btnSend.disabled = true;
+    if (els.connPill) {
+      els.connPill.textContent = "未配置 Key";
+      els.connPill.className = "pill bad";
+    }
+  } else if (!state.busy) {
+    els.btnSend.disabled = false;
+  }
+}
+
+function queueComposerText(text, { submit = false } = {}) {
+  els.chatInput.value = text;
+  autoGrow();
+  els.chatInput.focus();
+  if (submit) {
+    els.chatForm.requestSubmit();
+  }
+}
+
+function appendContinueActions(card, { title, message, primaryLabel = "继续配置" }) {
+  if (card.querySelector(".continue-row")) return;
+  const row = document.createElement("div");
+  row.className = "continue-row";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "primary-btn";
+  btn.textContent = primaryLabel;
+  btn.addEventListener("click", () => {
+    queueComposerText(message, { submit: true });
+  });
+  const hint = document.createElement("span");
+  hint.className = "install-desc";
+  hint.textContent = title;
+  row.appendChild(btn);
+  row.appendChild(hint);
+  card.appendChild(row);
+}
+
 
 function scrollChat() {
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
@@ -378,8 +512,12 @@ function ensureThink(turn) {
   turn.thinkBody = details.querySelector(".think-body");
 }
 
+
 function appendThink(turn, message) {
+  if (!message) return;
   ensureThink(turn);
+  // 思考轨只保留最新状态，避免 phase/pipeline 刷屏
+  turn.thinkBody.innerHTML = "";
   const item = document.createElement("div");
   item.className = "think-line";
   item.textContent = message;
@@ -388,6 +526,7 @@ function appendThink(turn, message) {
   if (sub) sub.textContent = message;
   scrollChat();
 }
+
 
 function appendMemory(turn, message) {
   const details = document.createElement("details");
@@ -484,7 +623,16 @@ function appendInstallOffer(turn, offer) {
               log.textContent += `${payload.message || "完成"}\n`;
               btn.textContent = ok ? "已安装" : "重试安装";
               btn.disabled = ok;
-              if (ok) card.classList.add("is-done");
+              if (ok) {
+                card.classList.add("is-done");
+                if (payload.pipeline) updatePipelineRail(payload.pipeline);
+                const agentName = offer.name || offer.agent_id || "Agent";
+                appendContinueActions(card, {
+                  title: "安装完成后继续探测本地配置并写入渠道",
+                  message: `已安装好 ${agentName}，请继续配置渠道`,
+                  primaryLabel: "继续配置",
+                });
+              }
             }
           }
           scrollChat();
@@ -509,24 +657,41 @@ function appendWriteOffer(turn, offer) {
   const card = document.createElement("div");
   card.className = "install-card write-card";
   const params = offer.params || {};
+  const protocol = offer.native_protocol || params.protocol || "—";
   card.innerHTML = `
     <div class="install-head">
       <div>
         <div class="install-kicker">Write · 需要确认</div>
         <div class="install-title">${escapeHtml(offer.name || offer.agent_id || "Agent")}</div>
-        <div class="install-desc">${escapeHtml(offer.message || "")}</div>
+        <div class="install-desc">请核对以下字段后确认写入本机配置文件</div>
       </div>
       <button type="button" class="primary-btn write-btn">确认写入</button>
     </div>
-    <div class="install-meta">
-      <span>路径：${escapeHtml(offer.target_path || "—")}</span>
-      <span>${offer.will_create_new_file ? "将新建文件" : "将更新已有文件（自动备份）"}</span>
-      <span>Key：${escapeHtml(offer.api_key_masked || "***")}</span>
+    <dl class="write-review">
+      <div class="write-review-row"><dt>路径</dt><dd>${escapeHtml(offer.target_path || "—")}</dd></div>
+      <div class="write-review-row"><dt>操作</dt><dd>${offer.will_create_new_file ? "新建文件" : "更新已有文件（自动备份）"}</dd></div>
+      <div class="write-review-row"><dt>Base URL</dt><dd>${escapeHtml(params.base_url || "—")}</dd></div>
+      <div class="write-review-row"><dt>模型</dt><dd>${escapeHtml(params.model || "—")}</dd></div>
+      <div class="write-review-row"><dt>协议</dt><dd>${escapeHtml(protocol)}</dd></div>
+      <div class="write-review-row"><dt>API Key</dt><dd>${escapeHtml(offer.api_key_masked || "***")}</dd></div>
+    </dl>
+    <div class="write-actions">
+      <button type="button" class="ghost-btn write-cancel-btn">取消</button>
     </div>
     <pre class="install-log write-log" hidden></pre>
   `;
   const btn = card.querySelector(".write-btn");
+  const cancelBtn = card.querySelector(".write-cancel-btn");
   const log = card.querySelector(".write-log");
+  cancelBtn.addEventListener("click", () => {
+    if (card.classList.contains("is-done")) return;
+    card.classList.add("is-cancelled");
+    btn.disabled = true;
+    cancelBtn.disabled = true;
+    cancelBtn.textContent = "已取消";
+    log.hidden = false;
+    log.textContent = "已取消写入。如需继续，请重新发起配置。";
+  });
   btn.addEventListener("click", async () => {
     if (!params.base_url || !params.model || !params.api_key) {
       log.hidden = false;
@@ -534,6 +699,7 @@ function appendWriteOffer(turn, offer) {
       return;
     }
     btn.disabled = true;
+    cancelBtn.disabled = true;
     btn.textContent = "写入中…";
     log.hidden = false;
     log.textContent = "";
@@ -554,9 +720,17 @@ function appendWriteOffer(turn, offer) {
       log.textContent = lines.join("\n");
       btn.textContent = "已写入";
       card.classList.add("is-done");
+      if (data.pipeline) updatePipelineRail(data.pipeline);
+      const agentName = offer.name || offer.agent_id || "Agent";
+      appendContinueActions(card, {
+        title: "写入完成后建议立刻测试渠道连通性",
+        message: `配置已写入 ${agentName}，请继续测试渠道`,
+        primaryLabel: "继续测试",
+      });
     } catch (err) {
       log.textContent = err.message || String(err);
       btn.disabled = false;
+      cancelBtn.disabled = false;
       btn.textContent = "重试写入";
     }
     scrollChat();
@@ -690,12 +864,21 @@ function resetAnswerStream(turn) {
   turn.prose.hidden = true;
 }
 
+
 function setBusy(busy) {
   state.busy = busy;
-  els.btnSend.disabled = busy;
-  els.chatInput.disabled = busy;
+  els.btnSend.disabled = busy || !(state.config && state.config.api_key_set);
+  // 发送中仍允许编辑下一句；仅用停止按钮中断
+  if (els.btnStop) {
+    els.btnStop.hidden = !busy;
+    els.btnStop.disabled = !busy;
+  }
   els.btnSend.classList.toggle("is-busy", busy);
+  if (els.btnSend) {
+    els.btnSend.textContent = busy ? "发送中" : "发送";
+  }
 }
+
 
 function openSettings() {
   els.drawer.classList.add("open");
@@ -766,6 +949,7 @@ async function loadConfig() {
   state.config = config;
   fillSettingsForm(config);
   refreshMeta(config);
+  refreshSetupGate(config);
 }
 
 async function saveConfig(event) {
@@ -810,6 +994,7 @@ async function saveConfig(event) {
   state.config = data;
   fillSettingsForm(data);
   refreshMeta(data);
+  refreshSetupGate(data);
   els.settingsStatus.textContent = "配置已保存，立即生效";
   els.settingsStatus.className = "status-line ok";
 }
@@ -839,6 +1024,12 @@ async function testConnection() {
 async function sendMessage(event) {
   event.preventDefault();
   if (state.busy) return;
+  if (!(state.config && state.config.api_key_set)) {
+    refreshSetupGate(state.config);
+    addNotice("请先在「模型配置」中填写 API Key。", "error");
+    openSettings();
+    return;
+  }
   const message = els.chatInput.value.trim();
   if (!message) return;
 
@@ -846,6 +1037,10 @@ async function sendMessage(event) {
   state.history.push({ role: "user", content: message });
   els.chatInput.value = "";
   autoGrow();
+  if (els.composerExamples) els.composerExamples.hidden = true;
+
+  const controller = new AbortController();
+  state.abortController = controller;
   setBusy(true);
 
   const turn = createTurnCard();
@@ -860,6 +1055,7 @@ async function sendMessage(event) {
         history: state.history.slice(0, -1),
         session_id: state.sessionId,
       }),
+      signal: controller.signal,
     });
     if (!res.ok || !res.body) {
       throw new Error(`请求失败: HTTP ${res.status}`);
@@ -895,9 +1091,7 @@ async function sendMessage(event) {
         } else if (payload.type === "write_offer") {
           appendWriteOffer(turn, payload);
         } else if (payload.type === "pipeline") {
-          state.pipeline = payload.state || null;
-          const text = payload.state?.progress_text;
-          if (text) appendThink(turn, text.split("\n")[0] || text);
+          updatePipelineRail(payload.state || null);
         } else if (payload.type === "memory") {
           if (payload.action === "recall" && payload.items?.length) {
             const lines = payload.items.map((item, i) => `${i + 1}. ${item.memory}`).join("\n");
@@ -917,8 +1111,14 @@ async function sendMessage(event) {
       }
     }
   } catch (err) {
-    addNotice(err.message || String(err), "error");
+    if (err && err.name === "AbortError") {
+      appendThink(turn, "已停止");
+      addNotice("已停止本次回复。");
+    } else {
+      addNotice(err.message || String(err), "error");
+    }
   } finally {
+    state.abortController = null;
     setBusy(false);
   }
 }
@@ -982,12 +1182,17 @@ document.getElementById("btn-clear-sessions").addEventListener("click", async ()
   loadMemoryData();
 });
 els.btnClear.addEventListener("click", () => {
+  if (state.busy && state.abortController) {
+    state.abortController.abort();
+  }
   state.history = [];
   els.chatLog.innerHTML = "";
-  // 清空对话 = 开一个新会话，之后的轮次会归到新的 session_id 下
   state.sessionId = newSessionId();
   localStorage.setItem("kingswitch_session_id", state.sessionId);
-  addNotice("对话已清空，已开始新会话。可先打开右上角「模型配置」填入你的 API。");
+  updatePipelineRail(null);
+  if (els.composerExamples) els.composerExamples.hidden = false;
+  addNotice("对话已清空，已开始新会话；配置流水线进度已重置。可先打开右上角「模型配置」填入你的 API。");
+  refreshSetupGate(state.config);
 });
 els.chatInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
@@ -995,8 +1200,35 @@ els.chatInput.addEventListener("keydown", (event) => {
     els.chatForm.requestSubmit();
   }
 });
+
 els.chatInput.addEventListener("input", autoGrow);
 autoGrow();
+
+if (els.btnStop) {
+  els.btnStop.addEventListener("click", () => {
+    if (state.abortController) state.abortController.abort();
+  });
+}
+
+if (els.composerExamples) {
+  els.composerExamples.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-example]");
+    if (!chip) return;
+    queueComposerText(chip.getAttribute("data-example") || "", { submit: true });
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (els.memoryDrawer && els.memoryDrawer.classList.contains("open")) {
+    closeMemory();
+    return;
+  }
+  if (els.drawer && els.drawer.classList.contains("open")) {
+    closeSettings();
+  }
+});
+
 
 const SCAN_STATUS_LABEL = {
   ok: "已就绪",
@@ -1031,7 +1263,7 @@ function renderScanPanel(scan) {
       <div>
         <div class="install-kicker">SCAN · 本机 Agent 概览</div>
         <div class="install-title">巡检完成</div>
-        <div class="install-desc">共 ${rows.length} 个已知 Agent，${configuredCount} 个已配置渠道，${okCount} 个探测全部通过。</div>
+        <div class="install-desc">共 ${rows.length} 个已知 Agent，${configuredCount} 个已配置渠道，${okCount} 个探测全部通过。点击行可快速发起配置。</div>
       </div>
       ${reportUrl ? `<a class="ghost-btn" href="${escapeHtml(reportUrl)}" download>下载报告</a>` : ""}
     </div>
@@ -1045,16 +1277,27 @@ function renderScanPanel(scan) {
   rows.forEach((row) => {
     const marks = scanRowMarks(row);
     const tr = document.createElement("div");
-    tr.className = "scan-row";
-    tr.title = SCAN_STATUS_LABEL[row.status] || row.status || "";
+    tr.className = "scan-row is-actionable";
+    const statusLabel = SCAN_STATUS_LABEL[row.status] || row.status || "";
+    tr.title = statusLabel;
+    const name = row.name || row.agent_id || "Agent";
     tr.innerHTML = `
-      <span class="scan-agent-name">${escapeHtml(row.name || row.agent_id)}</span>
+      <span class="scan-agent-name">${escapeHtml(name)}</span>
       <span>${marks.installed}</span>
       <span>${marks.config}</span>
       <span>${marks.ping}</span>
       <span>${marks.tool}</span>
       <span>${marks.fidelity}</span>
+      <span class="scan-row-action">${escapeHtml(statusLabel || "点击配置")}</span>
     `;
+    tr.addEventListener("click", () => {
+      let prompt = `把模型配置到 ${name}`;
+      if (row.status === "not_installed") prompt = `请帮我安装并配置 ${name}`;
+      else if (row.status === "not_configured") prompt = `请为 ${name} 配置模型渠道`;
+      else if (row.status === "probe_failed") prompt = `请检查并修复 ${name} 的渠道配置`;
+      else if (row.status === "ok") prompt = `请复查 ${name} 的渠道配置是否正常`;
+      queueComposerText(prompt, { submit: true });
+    });
     table.appendChild(tr);
   });
   els.chatLog.appendChild(card);
@@ -1082,7 +1325,11 @@ async function runAutoScan() {
 addNotice("欢迎使用 KingSwitch。先配置上游模型，再输入例如：我想把金山云模型配置到 WorkBuddy");
 loadConfig()
   .then(() => {
-    if (state.config && state.config.enable_auto_scan) {
+    refreshSetupGate(state.config);
+    if (!(state.config && state.config.api_key_set)) {
+      addNotice("检测到尚未配置 API Key，请先完成模型配置。", "error");
+    }
+    if (state.config && state.config.enable_auto_scan && state.config.api_key_set) {
       runAutoScan();
     }
   })
