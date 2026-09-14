@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KingSwitch · 模型渠道切换助手</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">K</div>
+        <div>
+          <p class="eyebrow">Switch · Protocol · Config</p>
+          <h1>KingSwitch</h1>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="meta-chips">
+          <span class="meta-chip"><small>模型</small><span id="meta-model">—</span></span>
+          <span class="meta-chip"><small>协议</small><span id="meta-protocol">—</span></span>
+          <span class="meta-chip"><small>能力</small><span id="meta-tools">—</span></span>
+        </div>
+        <button id="btn-open-settings" class="ghost-btn" type="button">模型配置</button>
+        <span id="conn-pill" class="pill">未检测</span>
+      </div>
+    </header>
+
+    <main class="chat-shell">
+      <section class="chat-panel">
+        <section id="pipeline-rail" class="pipeline-rail" hidden>
+          <div class="pipeline-rail-head">
+            <div>
+              <p class="pipeline-kicker">渠道配置进度</p>
+              <p id="pipeline-summary" class="pipeline-summary">尚未开始</p>
+            </div>
+            <span id="pipeline-target" class="pipeline-target"></span>
+          </div>
+          <ol id="pipeline-steps" class="pipeline-steps" aria-label="流水线步骤"></ol>
+        </section>
+        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+        <form id="chat-form" class="composer">
+          <div id="composer-examples" class="composer-examples" aria-label="示例提问">
+            <button type="button" class="example-chip" data-example="把模型配置到 WorkBuddy">配置到 WorkBuddy</button>
+            <button type="button" class="example-chip" data-example="巡检本机已安装的 Agent">巡检本机 Agent</button>
+            <button type="button" class="example-chip" data-example="列出可以配置渠道的 Agent">列出可配置 Agent</button>
+          </div>
+          <div class="composer-box">
+            <textarea id="chat-input" rows="1" placeholder="把模型配到哪个 Agent？例如：配置金山云到 WorkBuddy"></textarea>
+            <div class="composer-actions">
+              <button id="btn-stop" class="ghost-btn stop-btn" type="button" hidden>停止</button>
+              <button id="btn-send" class="primary-btn" type="submit">发送</button>
+            </div>
+          </div>
+          <div class="composer-foot">
+            <div class="composer-foot-actions">
+              <button id="btn-open-memory" class="memory-entry-btn" type="button" title="打开记忆库">记忆库</button>
+              <button id="btn-clear" class="ghost-btn" type="button">清空对话</button>
+            </div>
+            <span>Enter 发送 · Shift+Enter 换行</span>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <aside id="settings-drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-backdrop" data-close></div>
+    <div class="drawer-panel" role="dialog" aria-labelledby="settings-title">
+      <div class="drawer-head">
+        <div>
+          <p class="eyebrow">KingSwitch Config</p>
+          <h2 id="settings-title">模型与协议配置</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close aria-label="关闭">×</button>
+      </div>
+
+      <form id="settings-form" class="settings-form">
+
+        <!-- 第 1 层：模型服务本身，始终展开，因为没配这些其它都跑不起来 -->
+        <section class="cfg-section">
+          <header class="cfg-section-head">
+            <h3>模型服务</h3>
+            <p>KingSwitch 自身用于推理的上游 API</p>
+          </header>
+          <div class="cfg-fields">
+            <label>
+              <span>API Base URL</span>
+              <input name="api_base_url" placeholder="https://xxx/v1" required />
+            </label>
+            <label>
+              <span>API Key</span>
+              <input name="api_key" type="password" placeholder="留空则保持原值" autocomplete="off" />
+              <small id="key-hint"></small>
+            </label>
+            <label>
+              <span>模型 ID</span>
+              <input name="model" required />
+            </label>
+            <label>
+              <span>接口协议</span>
+              <select name="protocol">
+                <option value="chat_completions">OpenAI Chat Completions</option>
+                <option value="responses">OpenAI Responses</option>
+                <option value="anthropic_messages">Anthropic Messages</option>
+              </select>
+            </label>
+          </div>
+
+          <details class="cfg-advanced">
+            <summary><span>高级参数</span><span class="chev" aria-hidden="true"></span></summary>
+            <div class="cfg-fields cfg-fields-grid">
+              <label>
+                <span>Temperature</span>
+                <input name="temperature" type="number" min="0" max="2" step="0.1" />
+              </label>
+              <label>
+                <span>Max Tokens</span>
+                <input name="max_tokens" type="number" min="1" max="200000" step="1" />
+              </label>
+              <label class="span-2">
+                <span>请求超时（秒）</span>
+                <input name="request_timeout_seconds" type="number" min="10" max="600" step="1" />
+              </label>
+            </div>
+          </details>
+        </section>
+
+        <!-- 第 2 层：能力开关，决定下面哪些细节配置有意义 -->
+        <section class="cfg-section">
+          <header class="cfg-section-head">
+            <h3>能力</h3>
+          </header>
+          <div class="cfg-toggle-list">
+            <label class="cfg-toggle">
+              <span class="toggle-text">
+                <strong>本地工具</strong>
+                <small>KingSwitch 工具集、文件访问与协议适配</small>
+              </span>
+              <span class="switch">
+                <input name="enable_tools" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </label>
+            <label class="cfg-toggle">
+              <span class="toggle-text">
+                <strong>联网搜索</strong>
+                <small>Chat Completions 请求里注入 web_search</small>
+              </span>
+              <span class="switch">
+                <input name="enable_web_search" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </label>
+            <label class="cfg-toggle">
+              <span class="toggle-text">
+                <strong>长期记忆</strong>
+                <small>本地优先，Mem0 向量库可选叠加</small>
+              </span>
+              <span class="switch">
+                <input name="enable_memory" type="checkbox" id="toggle-memory" />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </label>
+            <label class="cfg-toggle">
+              <span class="toggle-text">
+                <strong>自动巡检本机 Agent</strong>
+                <small>打开页面时自动探测已知 Agent 的安装/配置/连通性，会对已配置渠道发起真实请求</small>
+              </span>
+              <span class="switch">
+                <input name="enable_auto_scan" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <!-- 第 3 层：记忆细节，只有开启长期记忆时才有意义，跟随开关联动 -->
+        <section class="cfg-section cfg-section-dependent" id="memory-section">
+          <details class="cfg-advanced" id="memory-details" open>
+            <summary><span>记忆细节配置</span><span class="chev" aria-hidden="true"></span></summary>
+            <div class="cfg-fields">
+              <label>
+                <span>记忆用户 ID</span>
+                <input name="memory_user_id" placeholder="default" />
+              </label>
+              <label>
+                <span>记忆抽取模型</span>
+                <input name="memory_llm_model" placeholder="空则复用主模型" />
+              </label>
+              <label>
+                <span>向量模型 Base URL</span>
+                <input name="memory_embed_base_url" placeholder="https://xxx/v1" />
+              </label>
+              <label>
+                <span>向量模型 API Key</span>
+                <input name="memory_embed_api_key" type="password" placeholder="留空则保持原值" autocomplete="off" />
+                <small id="embed-key-hint"></small>
+              </label>
+              <label>
+                <span>向量模型 ID</span>
+                <input name="memory_embed_model" />
+              </label>
+              <div class="cfg-fields-grid">
+                <label>
+                  <span>记忆 Top K</span>
+                  <input name="memory_top_k" type="number" min="1" max="20" />
+                </label>
+                <label>
+                  <span>向量维度</span>
+                  <input name="memory_embed_dims" type="number" min="64" max="4096" />
+                </label>
+              </div>
+            </div>
+            <div class="cfg-inline-actions">
+              <button id="btn-open-memory-from-settings" class="ghost-btn" type="button">打开记忆库</button>
+            </div>
+          </details>
+          <p class="cfg-section-hint">已关闭长期记忆，以下配置暂不生效</p>
+        </section>
+
+        <!-- 第 4 层：系统提示词，默认折叠，很少需要改 -->
+        <section class="cfg-section">
+          <details class="cfg-advanced">
+            <summary><span>系统提示词</span><span class="chev" aria-hidden="true"></span></summary>
+            <label class="cfg-fields">
+              <textarea name="system_prompt" rows="10"></textarea>
+            </label>
+          </details>
+        </section>
+
+        <div class="drawer-actions">
+          <button id="btn-test" class="ghost-btn" type="button">测试连接</button>
+          <button class="primary-btn" type="submit">保存配置</button>
+        </div>
+        <p id="settings-status" class="status-line"></p>
+      </form>
+    </div>
+  </aside>
+
+  <aside id="memory-drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-backdrop" data-close-memory></div>
+    <div class="drawer-panel drawer-panel-wide" role="dialog" aria-labelledby="memory-title">
+      <div class="drawer-head">
+        <div>
+          <p class="eyebrow">Memory</p>
+          <h2 id="memory-title">记忆库</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close-memory aria-label="关闭">×</button>
+      </div>
+
+      <!-- 顶部摘要：累计 token 消耗，参考 Tokdash 的 summary card 做法，
+           把 cached 单独列出来，因为缓存命中率直接决定成本 -->
+      <div class="mem-summary" id="mem-summary"></div>
+
+      <div class="mem-tabs" role="tablist">
+        <button type="button" class="mem-tab is-active" data-tab="long" role="tab">长期记忆</button>
+        <button type="button" class="mem-tab" data-tab="short" role="tab">短期记忆 · 会话</button>
+      </div>
+
+      <div class="mem-body">
+        <section class="mem-pane is-active" data-pane="long">
+          <p class="mem-pane-hint">从历史对话里提炼沉淀、会被自动召回注入到后续提问的内容。点击任意一条可跳回它产生时的会话。</p>
+          <div id="mem-long-list" class="mem-list"></div>
+        </section>
+        <section class="mem-pane" data-pane="short">
+          <p class="mem-pane-hint">逐轮对话的原始记录与真实 token 消耗，按会话分组。点击会话可在聊天区回放。</p>
+          <div id="mem-short-list" class="mem-list"></div>
+        </section>
+      </div>
+
+      <div class="drawer-actions mem-actions">
+        <button id="btn-refresh-memory" class="ghost-btn" type="button">刷新</button>
+        <button id="btn-clear-memory" class="ghost-btn" type="button">清空长期记忆</button>
+        <button id="btn-clear-sessions" class="ghost-btn" type="button">清空会话记录</button>
+      </div>
+      <p id="memory-status" class="status-line"></p>
+    </div>
+  </aside>
+
+  <script src="/assets/markdown.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

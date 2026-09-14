@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/config.json
+data/memory/
+data/reports/
+.DS_Store
+data/pipeline_states.json
