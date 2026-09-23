@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Docs Sync</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="top">
+    <div>
+      <p class="brand">Docs Sync</p>
+      <p class="tagline">llms.txt 增量同步 · Claude / OpenAI / Gemini</p>
+    </div>
+    <div class="job-pill" id="jobPill">空闲</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel controls">
+      <h2>同步控制</h2>
+      <div class="sources" id="sourceList"></div>
+
+      <div class="grid-form">
+        <label>
+          <span>每源页数上限</span>
+          <input id="maxPages" type="number" min="1" value="5" />
+        </label>
+        <label>
+          <span>并发</span>
+          <input id="concurrency" type="number" min="1" max="16" value="4" />
+        </label>
+        <label>
+          <span>延迟 (秒)</span>
+          <input id="delay" type="number" min="0" step="0.1" value="0.2" />
+        </label>
+        <label>
+          <span>轮询间隔 (秒)</span>
+          <input id="interval" type="number" min="10" value="60" />
+        </label>
+      </div>
+
+      <div class="toggles">
+        <label class="check"><input id="dryRun" type="checkbox" /> Dry run（只检测不写盘）</label>
+        <label class="check"><input id="watch" type="checkbox" /> Watch 模式（定时重同步）</label>
+      </div>
+
+      <div class="actions">
+        <button id="startBtn" class="primary" type="button">开始同步</button>
+        <button id="stopBtn" class="ghost" type="button" disabled>停止</button>
+        <button id="refreshBtn" class="ghost" type="button">刷新状态</button>
+      </div>
+    </section>
+
+    <section class="panel summary">
+      <h2>源状态</h2>
+      <div class="cards" id="sourceCards"></div>
+      <h2 class="sub">最近结果</h2>
+      <div id="summaryTable" class="empty">尚未同步</div>
+    </section>
+
+    <section class="panel log">
+      <div class="log-head">
+        <h2>实时日志</h2>
+        <button id="clearLog" class="tiny" type="button">清空</button>
+      </div>
+      <pre id="logView" class="log-view"></pre>
+    </section>
+
+    <section class="panel browser">
+      <div class="browser-head">
+        <h2>本地页面</h2>
+        <select id="browseSource"></select>
+      </div>
+      <div class="browser-body">
+        <div id="pageList" class="page-list empty">选择源后加载</div>
+        <article class="page-view">
+          <header id="pageMeta" class="page-meta">选择左侧页面预览</header>
+          <pre id="pageContent" class="page-content"></pre>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

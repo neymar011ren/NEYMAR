@@ -1,0 +1,30 @@
+# Documentation sources that publish llms.txt indexes.
+# Run: python sync_docs.py --source claude --max-pages 5
+
+output_dir: ./data
+user_agent: "docs-sync-demo/0.1 (+https://github.com/example/docs-sync-demo)"
+concurrency: 4
+request_timeout_sec: 30
+# Politeness delay between requests per host (seconds)
+delay_sec: 0.2
+
+sources:
+  claude:
+    name: Claude Platform Docs
+    llms_txt: https://platform.claude.com/llms.txt
+    # Keep only English docs pages in this demo
+    include_url_regex:
+      - "^https://platform\\.claude\\.com/docs/en/.*\\.md$"
+
+  openai:
+    name: OpenAI API Docs
+    # Nested product index that links to actual Markdown guide pages
+    llms_txt: https://developers.openai.com/api/docs/llms.txt
+    include_url_regex:
+      - "^https://developers\\.openai\\.com/api/docs/.*\\.md$"
+
+  gemini:
+    name: Gemini API Docs
+    llms_txt: https://ai.google.dev/gemini-api/docs/llms.txt
+    include_url_regex:
+      - "^https://ai\\.google\\.dev/.*\\.(md|md\\.txt)$"
