@@ -1,6 +1,6 @@
 # docs-sync-demo
 
-一个最小可用的 **llms.txt 增量同步** Demo：自动拉取 Claude / OpenAI / Gemini 官方文档索引，下载 Markdown 正文，并用 **SHA-256 + ETag/304** 检测更新。
+一个带 **可视化 Web UI** 的 `llms.txt` 增量同步 Demo：自动拉取 Claude / OpenAI / Gemini 官方文档索引，下载 Markdown 正文，并用 **SHA-256 + ETag/304** 检测更新。
 
 ## 它做什么
 
@@ -12,7 +12,7 @@
 
 第二次运行同一源时，未变更页面会显示为 `unchanged`（若服务端支持还会收到 HTTP 304）。
 
-## 快速开始
+## 快速开始（Web UI，推荐）
 
 ```bash
 cd docs-sync-demo
@@ -20,20 +20,20 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 查看配置的源
+# 打开可视化界面
+uvicorn app:app --host 0.0.0.0 --port 8765 --reload
+```
+
+浏览器访问 http://127.0.0.1:8765
+
+界面可勾选源、设置页数/并发/Watch、看实时日志、浏览已同步 Markdown。
+
+## CLI（可选）
+
+```bash
 python sync_docs.py --list-sources
-
-# Demo：只同步 Claude 前 5 页
 python sync_docs.py --source claude --max-pages 5
-
-# 再跑一次，应看到大部分 unchanged
-python sync_docs.py --source claude --max-pages 5
-
-# 定时轮询（接近“实时”的开源做法）
-python sync_docs.py --source claude --max-pages 5 --interval 60
-
-# 三个源都试一下（各 3 页）
-python sync_docs.py --source all --max-pages 3
+python sync_docs.py --source all --max-pages 3 --interval 60
 ```
 
 ## 输出结构
